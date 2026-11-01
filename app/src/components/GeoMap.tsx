@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Map as MLMap, Marker, MapLayerMouseEvent, ExpressionSpecification } from 'maplibre-gl';
 import { SEVERITY_COLORS, SEVERITY_LABEL } from '@/lib/maplayers';
+import { PALETTE } from '@/lib/tokens';
 import { Icon } from './Icon';
 import type { FeatureCollection, Feature } from 'geojson';
 
@@ -49,8 +50,8 @@ const DEFAULT_LAYERS = ['critical', 'decline', 'stable', 'improving'];
 
 function fillExpr(active: Set<string>): ExpressionSpecification {
   const pairs: string[] = [];
-  for (const s of STATUS_LAYERS) for (const sev of s.sev) pairs.push(sev, active.has(s.key) ? SEVERITY_COLORS[sev] : '#F4F2EC');
-  return ['match', ['get', 'severity'], ...pairs, 'insufficient', SEVERITY_COLORS.insufficient, '#F4F2EC'] as unknown as ExpressionSpecification;
+  for (const s of STATUS_LAYERS) for (const sev of s.sev) pairs.push(sev, active.has(s.key) ? SEVERITY_COLORS[sev] : PALETTE.map.muted);
+  return ['match', ['get', 'severity'], ...pairs, 'insufficient', SEVERITY_COLORS.insufficient, PALETTE.map.muted] as unknown as ExpressionSpecification;
 }
 
 function hatchImage(): { width: number; height: number; data: Uint8Array } {
@@ -69,7 +70,7 @@ const pp = (v: unknown) => (v === null || v === undefined ? '—' : `${Number(v)
 function Popover({ label, icon, children, open, setOpen }: { label: string; icon: string; children: React.ReactNode; open: boolean; setOpen: (v: boolean) => void }) {
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium ${open ? 'bg-navy text-white' : 'text-ink-soft hover:bg-paper-deep hover:text-ink'}`}>
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium ${open ? 'bg-navy text-white' : 'text-ink-soft hover:bg-paper-deep hover:text-ink'}`}>
         <Icon name={icon} size={14} /><span className="sr-only sm:not-sr-only">{label}</span>
       </button>
       {open ? <div className="absolute left-0 top-full z-30 mt-1.5 w-64 animate-fade-in rounded-xl border border-line bg-white p-3 shadow-pop">{children}</div> : null}
@@ -141,7 +142,7 @@ export function GeoMap({ height = 560, compact = false, selectedId: selectedProp
         libRef.current = lib;
         const map = new lib.Map({
           container: box.current,
-          style: { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#ECEFEC' } }] },
+          style: { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': PALETTE.map.DEFAULT } }] },
           center: [0, 0], zoom: 6, attributionControl: false, doubleClickZoom: false, dragRotate: false, pitchWithRotate: false,
         });
         map.addControl(new lib.NavigationControl({ showCompass: false }), 'top-right');
@@ -153,15 +154,15 @@ export function GeoMap({ height = 560, compact = false, selectedId: selectedProp
           map.addImage('hatch', hatchImage());
           map.addSource('outline', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
           map.addSource('units', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, promoteId: 'id' });
-          map.addLayer({ id: 'outline-fill', type: 'fill', source: 'outline', paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 } });
+          map.addLayer({ id: 'outline-fill', type: 'fill', source: 'outline', paint: { 'fill-color': PALETTE.paper.DEFAULT, 'fill-opacity': 0.55 } });
           map.addLayer({ id: 'units-fill', type: 'fill', source: 'units', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': fillExpr(new Set(DEFAULT_LAYERS)), 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.96, 0.85] } });
           map.addLayer({ id: 'units-hatch', type: 'fill', source: 'units', filter: ['all', ['==', ['geometry-type'], 'Polygon'], ['==', ['get', 'insufficient'], 1]], paint: { 'fill-pattern': 'hatch' } });
-          map.addLayer({ id: 'units-line', type: 'line', source: 'units', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'line-color': '#ffffff', 'line-width': 1.5 } });
-          map.addLayer({ id: 'units-sel', type: 'line', source: 'units', filter: ['==', ['get', 'id'], ''], paint: { 'line-color': '#101E38', 'line-width': 3 } });
-          map.addLayer({ id: 'outline-line', type: 'line', source: 'outline', paint: { 'line-color': '#101E38', 'line-width': 1.4, 'line-dasharray': [2, 1.5] } });
+          map.addLayer({ id: 'units-line', type: 'line', source: 'units', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'line-color': PALETTE.paper.DEFAULT, 'line-width': 1.5 } });
+          map.addLayer({ id: 'units-sel', type: 'line', source: 'units', filter: ['==', ['get', 'id'], ''], paint: { 'line-color': PALETTE.ink.DEFAULT, 'line-width': 3 } });
+          map.addLayer({ id: 'outline-line', type: 'line', source: 'outline', paint: { 'line-color': PALETTE.ink.DEFAULT, 'line-width': 1.4, 'line-dasharray': [2, 1.5] } });
           map.addLayer({ id: 'schools', type: 'circle', source: 'units', filter: ['==', ['geometry-type'], 'Point'], paint: {
             'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 9, 7], 'circle-color': fillExpr(new Set(DEFAULT_LAYERS)),
-            'circle-stroke-color': ['case', ['==', ['get', 'insufficient'], 1], '#4A5568', '#ffffff'], 'circle-stroke-width': 2 } });
+            'circle-stroke-color': ['case', ['==', ['get', 'insufficient'], 1], PALETTE.ink.soft, PALETTE.paper.DEFAULT], 'circle-stroke-width': 2 } });
           let hovered: string | number | undefined;
           const onMove = (e: MapLayerMouseEvent) => {
             const f = e.features?.[0];
@@ -251,7 +252,7 @@ export function GeoMap({ height = 560, compact = false, selectedId: selectedProp
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
       const isSel = p.id === selectedId;
       const el = document.createElement('div');
-      el.className = `pointer-events-none select-none rounded-md text-center leading-tight ${isSel ? 'bg-navy text-white shadow' : 'bg-white/90 text-[#101E38]'}`;
+      el.className = `pointer-events-none select-none rounded-md text-center leading-tight ${isSel ? 'bg-navy text-white shadow' : 'bg-white/90 text-ink'}`;
       el.style.cssText += `font-size:${isPoint && !isSel ? 10 : 11}px;padding:${isPoint && !isSel ? '0 4px' : '2px 6px'};${isPoint ? 'transform:translateY(-16px);' : ''}`;
       if ((!many && !isPoint) || isSel) { const n = document.createElement('div'); n.style.fontWeight = '600'; n.textContent = String(p.name); el.appendChild(n); }
       const v = document.createElement('div');
@@ -283,50 +284,50 @@ export function GeoMap({ height = 560, compact = false, selectedId: selectedProp
     push({ layers: v === [...DEFAULT_LAYERS].sort().join(',') ? null : v || 'none' });
   };
   const setFilter = (k: string, v: string) => push({ [k]: v || null, sel: null });
-  const sel = 'h-8 w-full rounded-md border border-line-strong bg-white px-2 text-[12.5px] text-ink';
+  const sel = 'h-8 w-full rounded-md border border-line-strong bg-white px-2 text-sm text-ink';
 
   return (
     <div className={compact ? 'space-y-2' : ''}>
-      <div className="relative overflow-hidden rounded-xl border border-line bg-[#ECEFEC]" style={{ height }}>
+      <div className="relative overflow-hidden rounded-xl border border-line bg-map" style={{ height }}>
         {/* MapLibre forces position:relative on its container, so the sizing lives on a wrapper. */}
         <div className="absolute inset-0"><div ref={box} className="h-full w-full" role="application" aria-label={`Map of ${data?.parent.name ?? 'your area'}`} /></div>
 
         {workspace ? (
           <div className="absolute left-3 top-3 z-20 flex flex-wrap items-center gap-0.5 rounded-lg border border-line bg-white/95 p-1 shadow-lift backdrop-blur" role="toolbar" aria-label="Map tools">
             <Popover label="Layers" icon="layers" open={pop === 'layers'} setOpen={(v) => setPop(v ? 'layers' : null)}>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">Learning status</p>
+              <p className="mb-1.5 text-2xs font-semibold uppercase tracking-[0.08em] text-ink-faint">Learning status</p>
               {STATUS_LAYERS.map((l) => (
-                <label key={l.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[13px] text-ink hover:bg-paper-sunk">
-                  <input type="checkbox" checked={layers.has(l.key)} onChange={() => toggleLayer(l.key)} className="h-3.5 w-3.5 accent-[#167D78]" />
+                <label key={l.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm text-ink hover:bg-paper-sunk">
+                  <input type="checkbox" checked={layers.has(l.key)} onChange={() => toggleLayer(l.key)} className="h-3.5 w-3.5 accent-brand" />
                   <span className="h-3 w-3 rounded-sm border border-line" style={{ background: l.color }} />{l.label}
                 </label>
               ))}
-              <p className="mb-1.5 mt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">Overlays</p>
+              <p className="mb-1.5 mt-3 text-2xs font-semibold uppercase tracking-[0.08em] text-ink-faint">Overlays</p>
               {OVERLAYS.map((o) => (
-                <label key={o.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[13px] text-ink hover:bg-paper-sunk">
-                  <input type="checkbox" checked={layers.has(o.key)} onChange={() => toggleLayer(o.key)} className="h-3.5 w-3.5 accent-[#167D78]" />
-                  <span className={`rounded-full px-1.5 text-[10px] font-semibold ${o.cls}`}>{o.key === 'complaints' ? 'C' : o.key === 'overdue' ? 'O' : 'A'}</span>{o.label}
+                <label key={o.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm text-ink hover:bg-paper-sunk">
+                  <input type="checkbox" checked={layers.has(o.key)} onChange={() => toggleLayer(o.key)} className="h-3.5 w-3.5 accent-brand" />
+                  <span className={`rounded-full px-1.5 text-2xs font-semibold ${o.cls}`}>{o.key === 'complaints' ? 'C' : o.key === 'overdue' ? 'O' : 'A'}</span>{o.label}
                 </label>
               ))}
-              <p className="mt-2 text-[11px] leading-snug text-ink-faint">Areas with too few students are always hatched — unknown, not stable.</p>
+              <p className="mt-2 text-2xs leading-snug text-ink-faint">Areas with too few students are always hatched — unknown, not stable.</p>
             </Popover>
             <Popover label="Filters" icon="filter" open={pop === 'filters'} setOpen={(v) => setPop(v ? 'filters' : null)}>
               <div className="space-y-2">
-                <label className="block text-[12px] text-ink-soft">Class<select className={sel} value={sp.get('grade') ?? ''} onChange={(e) => setFilter('grade', e.target.value)}><option value="">All classes</option><option value="1">Class 1</option><option value="2">Class 2</option><option value="3">Class 3</option></select></label>
-                <label className="block text-[12px] text-ink-soft">Subject<select className={sel} value={sp.get('subject') ?? ''} onChange={(e) => setFilter('subject', e.target.value)}><option value="">Both</option><option value="N">Numeracy</option><option value="L">Literacy</option></select></label>
-                <label className="block text-[12px] text-ink-soft">Competency<select className={sel} value={sp.get('comp') ?? ''} onChange={(e) => setFilter('comp', e.target.value)}><option value="">All</option>{competencies.filter((c) => !sp.get('subject') || c.id.startsWith(`CMP-${sp.get('subject')}`)).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
-                <label className="block text-[12px] text-ink-soft">Assessment period<select className={sel} value={sp.get('round') ?? ''} onChange={(e) => setFilter('round', e.target.value)}><option value="">Latest</option>{rounds.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></label>
-                {filterKey !== 'grade=&comp=&subject=&round=' ? <button type="button" onClick={() => push({ grade: null, comp: null, subject: null, round: null })} className="text-[12px] font-medium text-brand hover:underline">Clear filters</button> : null}
+                <label className="block text-xs text-ink-soft">Class<select className={sel} value={sp.get('grade') ?? ''} onChange={(e) => setFilter('grade', e.target.value)}><option value="">All classes</option><option value="1">Class 1</option><option value="2">Class 2</option><option value="3">Class 3</option></select></label>
+                <label className="block text-xs text-ink-soft">Subject<select className={sel} value={sp.get('subject') ?? ''} onChange={(e) => setFilter('subject', e.target.value)}><option value="">Both</option><option value="N">Numeracy</option><option value="L">Literacy</option></select></label>
+                <label className="block text-xs text-ink-soft">Competency<select className={sel} value={sp.get('comp') ?? ''} onChange={(e) => setFilter('comp', e.target.value)}><option value="">All</option>{competencies.filter((c) => !sp.get('subject') || c.id.startsWith(`CMP-${sp.get('subject')}`)).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
+                <label className="block text-xs text-ink-soft">Assessment period<select className={sel} value={sp.get('round') ?? ''} onChange={(e) => setFilter('round', e.target.value)}><option value="">Latest</option>{rounds.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></label>
+                {filterKey !== 'grade=&comp=&subject=&round=' ? <button type="button" onClick={() => push({ grade: null, comp: null, subject: null, round: null })} className="text-xs font-medium text-brand hover:underline">Clear filters</button> : null}
               </div>
             </Popover>
-            <button type="button" onClick={() => setLegend((v) => !v)} aria-pressed={legend} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium ${legend ? 'bg-paper-deep text-ink' : 'text-ink-soft hover:bg-paper-deep hover:text-ink'}`}><Icon name="info" size={14} /><span className="sr-only sm:not-sr-only">Legend</span></button>
-            <button type="button" onClick={() => data?.parent.bbox && mapRef.current?.fitBounds(data.parent.bbox as [number, number, number, number], { padding: 56, duration: 500 })} className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium text-ink-soft hover:bg-paper-deep hover:text-ink"><Icon name="refresh" size={14} /><span className="sr-only sm:not-sr-only">Reset</span></button>
+            <button type="button" onClick={() => setLegend((v) => !v)} aria-pressed={legend} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium ${legend ? 'bg-paper-deep text-ink' : 'text-ink-soft hover:bg-paper-deep hover:text-ink'}`}><Icon name="info" size={14} /><span className="sr-only sm:not-sr-only">Legend</span></button>
+            <button type="button" onClick={() => data?.parent.bbox && mapRef.current?.fitBounds(data.parent.bbox as [number, number, number, number], { padding: 56, duration: 500 })} className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-ink-soft hover:bg-paper-deep hover:text-ink"><Icon name="refresh" size={14} /><span className="sr-only sm:not-sr-only">Reset</span></button>
             <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-            <button type="button" onClick={() => push({ view: 'list' })} className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium text-ink-soft hover:bg-paper-deep hover:text-ink"><Icon name="list" size={14} /><span className="sr-only sm:not-sr-only">List</span></button>
+            <button type="button" onClick={() => push({ view: 'list' })} className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-ink-soft hover:bg-paper-deep hover:text-ink"><Icon name="list" size={14} /><span className="sr-only sm:not-sr-only">List</span></button>
           </div>
         ) : null}
 
-        {loading ? <div className={`absolute z-10 flex items-center gap-2 rounded-md bg-white/95 px-2.5 py-1.5 text-[12px] text-ink-soft shadow ${workspace ? 'bottom-3 right-3' : 'left-3 top-3'}`}><span className="h-3 w-3 animate-spin rounded-full border-2 border-brand border-t-transparent" />Loading map…</div> : null}
+        {loading ? <div className={`absolute z-10 flex items-center gap-2 rounded-md bg-white/95 px-2.5 py-1.5 text-xs text-ink-soft shadow ${workspace ? 'bottom-3 right-3' : 'left-3 top-3'}`}><span className="h-3 w-3 animate-spin rounded-full border-2 border-brand border-t-transparent" />Loading map…</div> : null}
         {error || mapError ? (
           <div className="absolute inset-0 z-10 grid place-items-center bg-ivory/90 p-6 text-center">
             <div>
@@ -340,30 +341,30 @@ export function GeoMap({ height = 560, compact = false, selectedId: selectedProp
           </div>
         ) : null}
         {!loading && !error && data && data.features.features.length === 0 ? (
-          <div className="absolute inset-x-0 top-1/2 z-10 mx-auto w-fit -translate-y-1/2 rounded-lg bg-white/95 px-4 py-2 text-[13px] text-ink-soft shadow">No mapped areas at this level.</div>
+          <div className="absolute inset-x-0 top-1/2 z-10 mx-auto w-fit -translate-y-1/2 rounded-lg bg-white/95 px-4 py-2 text-sm text-ink-soft shadow">No mapped areas at this level.</div>
         ) : null}
         {hover ? (
-          <div className="pointer-events-none absolute z-20 w-56 rounded-lg border border-line bg-white p-2.5 text-[12px] shadow-pop" style={{ left: Math.min(hover.x + 14, (box.current?.clientWidth ?? 600) - 236), top: Math.max(8, hover.y - 10) }}>
-            <p className="text-[13px] font-semibold text-ink">{String(hover.p.name)}</p>
-            <p className="text-[11px] text-ink-faint">{LEVEL_NAME[String(hover.p.level)] ?? String(hover.p.level)}</p>
+          <div className="pointer-events-none absolute z-20 w-56 rounded-lg border border-line bg-white p-2.5 text-xs shadow-pop" style={{ left: Math.min(hover.x + 14, (box.current?.clientWidth ?? 600) - 236), top: Math.max(8, hover.y - 10) }}>
+            <p className="text-sm font-semibold text-ink">{String(hover.p.name)}</p>
+            <p className="text-2xs text-ink-faint">{LEVEL_NAME[String(hover.p.level)] ?? String(hover.p.level)}</p>
             <p className="mt-1 flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: SEVERITY_COLORS[String(hover.p.severity)] }} />{SEVERITY_LABEL[String(hover.p.severity)]}{hover.p.severity !== 'insufficient' ? ` · ${pp(hover.p.relPp)}` : ''}</p>
             <p className="mt-1 text-ink-faint">{String(hover.p.openCases)} cases · {String(hover.p.complaints)} complaints · {String(hover.p.overdue)} overdue</p>
-            <p className="mt-1 text-[11px] text-ink-faint">{compact ? 'Click to open' : `Click to select${Number(hover.p.canDrill) ? ' · double-click to zoom in' : ''}`}</p>
+            <p className="mt-1 text-2xs text-ink-faint">{compact ? 'Click to open' : `Click to select${Number(hover.p.canDrill) ? ' · double-click to zoom in' : ''}`}</p>
           </div>
         ) : null}
         {workspace && legend ? (
-          <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-line bg-white/95 p-2.5 text-[11.5px] shadow-lift">
+          <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-line bg-white/95 p-2.5 text-xs shadow-lift">
             <ul className="space-y-0.5">
               {STATUS_LAYERS.map((l) => <li key={l.key} className={`flex items-center gap-1.5 ${layers.has(l.key) ? 'text-ink-soft' : 'text-ink-faint line-through'}`}><span className="h-2.5 w-3.5 rounded-sm border border-line" style={{ background: l.color }} />{l.label}</li>)}
-              <li className="flex items-center gap-1.5 text-ink-soft"><span className="h-2.5 w-3.5 rounded-sm border border-line bg-[repeating-linear-gradient(45deg,rgba(69,82,106,.6)_0_2px,#F3EFE6_2px_6px)]" />Insufficient data</li>
+              <li className="flex items-center gap-1.5 text-ink-soft"><span className="h-2.5 w-3.5 rounded-sm border border-line bg-[repeating-linear-gradient(45deg,rgba(69,82,106,.6)_0_2px,theme(colors.sev.insufficient)_2px_6px)]" />Insufficient data</li>
             </ul>
           </div>
         ) : null}
       </div>
       {compact ? (
-        <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-ink-soft" aria-label="Legend">
+        <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-soft" aria-label="Legend">
           {STATUS_LAYERS.map((l) => <li key={l.key} className="flex items-center gap-1.5"><span className="h-2.5 w-3.5 rounded-sm border border-line" style={{ background: l.color }} />{l.label}</li>)}
-          <li className="flex items-center gap-1.5"><span className="h-2.5 w-3.5 rounded-sm border border-line bg-[repeating-linear-gradient(45deg,rgba(69,82,106,.6)_0_2px,#F3EFE6_2px_6px)]" />Insufficient data</li>
+          <li className="flex items-center gap-1.5"><span className="h-2.5 w-3.5 rounded-sm border border-line bg-[repeating-linear-gradient(45deg,rgba(69,82,106,.6)_0_2px,theme(colors.sev.insufficient)_2px_6px)]" />Insufficient data</li>
           <li className="ml-auto text-ink-faint">Illustrative geography · fictional state</li>
         </ul>
       ) : null}

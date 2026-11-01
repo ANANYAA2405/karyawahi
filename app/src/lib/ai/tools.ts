@@ -2,7 +2,7 @@ import 'server-only';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { Session } from '../session';
 import { all } from '../db';
-import { and, findingsPred, importPred } from '../scope';
+import { and, findingsPred, importBatchPred } from '../scope';
 import { overviewSummary } from '../overview';
 import { hotspotUnits, unitBreakdown, canSeeUnit, unitPath, type Level } from '../hotspots';
 import {
@@ -256,7 +256,7 @@ const EXEC: Record<string, Exec> = {
     const dq = all<{ id: string; cluster_id: string; grade: number; competency_id: string; change_pp: number; participation_rate: number; schools_reporting: number; schools_total: number; dq_checks: string }>(
       `select f.id, f.cluster_id, f.grade, f.competency_id, f.change_pp, f.participation_rate, f.schools_reporting, f.schools_total, f.dq_checks from findings f where ${fp.sql} order by f.change_pp limit 25`, ...fp.params,
     );
-    const ip = importPred(s);
+    const ip = importBatchPred(s, 'import_batches');
     const rej = all<{ id: string; file_name: string; rejected_rows: number; total_rows: number; status: string }>(
       `select id, file_name, rejected_rows, total_rows, status from import_batches where (${ip.sql}) and rejected_rows > 0 order by uploaded_at desc limit 10`, ...ip.params,
     );

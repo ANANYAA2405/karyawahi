@@ -53,8 +53,9 @@ export function count(sql: string, ...params: Param[]): number {
   return Number(r?.c ?? 0);
 }
 
-export function run(sql: string, ...params: Param[]): void {
-  db().prepare(sql).run(...params);
+/** Runs a write and returns how many rows it changed. */
+export function run(sql: string, ...params: Param[]): number {
+  return Number(db().prepare(sql).run(...params).changes);
 }
 
 type Depth = { n: number };
@@ -111,6 +112,22 @@ export function nextId(name: string, prefix: string, pad: number): string {
     name, next,
   );
   return `${prefix}${String(next).padStart(pad, '0')}`;
+}
+
+/**
+ * Next id from a counter kept in app_sequences, never behind the highest id already in the
+ * table with that prefix, so new ids cannot collide with seeded rows or with rows an older
+ * max(id)+1 writer added. For the small ledger tables; the audit chain keeps its plain counter.
+ * `table` is a name from the code, never input.
+ */
+export function nextIdFor(name: string, table: string, prefix: string, pad: number): string {
+  run(
+    `insert into app_sequences (name, value)
+       select ?, coalesce(max(cast(substr(id, ?) as integer)), 0) from "${table}" where id like ?
+     on conflict(name) do update set value = max(app_sequences.value, excluded.value)`,
+    name, prefix.length + 1, `${prefix}%`,
+  );
+  return nextId(name, prefix, pad);
 }
 
 /** Next value of a counter in app_sequences, as a number. */

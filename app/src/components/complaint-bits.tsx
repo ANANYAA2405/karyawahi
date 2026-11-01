@@ -25,7 +25,7 @@ export function SlaChip({ c }: { c: Complaint }) {
   const s = slaState(c);
   if (s.tone === 'none') return null;
   const cls = s.tone === 'crit' ? 'text-crit' : s.tone === 'warn' ? 'text-warn' : 'text-ink-faint';
-  return <span className={`inline-flex items-center gap-1 text-[12px] ${cls}`}><Icon name="clock" size={12} />{s.label}</span>;
+  return <span className={`inline-flex items-center gap-1 text-xs ${cls}`}><Icon name="clock" size={12} />{s.label}</span>;
 }
 
 export function ComplaintRow({ c, names, categories, mine }: { c: Complaint; names: Map<string, string>; categories: Map<string, string>; mine?: boolean }) {
@@ -36,10 +36,10 @@ export function ComplaintRow({ c, names, categories, mine }: { c: Complaint; nam
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
-          <Link href={`/complaints/${c.id}`} className="text-[14px] font-semibold text-ink hover:text-brand">{c.title}</Link>
+          <Link href={`/complaints/${c.id}`} className="text-base font-semibold text-ink hover:text-brand">{c.title}</Link>
           {mine ? <span className="chip border-navy/30 bg-navy-100 text-navy-700">Yours to act on</span> : null}
         </div>
-        <p className="mt-0.5 text-[12.5px] text-ink-faint">
+        <p className="mt-0.5 text-sm text-ink-faint">
           <span className="font-mono">{c.id}</span> · {categories.get(c.category_key) ?? c.category_key} · from {names.get(c.reporter_user_id) ?? c.reporter_user_id}
           {c.escalation_level > 0 ? <span className="text-crit"> · escalated ×{c.escalation_level}</span> : null}
         </p>
@@ -50,7 +50,7 @@ export function ComplaintRow({ c, names, categories, mine }: { c: Complaint; nam
           <SlaChip c={c} />
         </div>
       </div>
-      <div className="shrink-0 text-right text-[12px] text-ink-faint">
+      <div className="shrink-0 text-right text-xs text-ink-faint">
         <p>With <span className="font-medium text-ink-soft">{names.get(c.assigned_user_id ?? '') ?? '—'}</span></p>
         <p className="uppercase">{c.assigned_role ?? ''}</p>
       </div>

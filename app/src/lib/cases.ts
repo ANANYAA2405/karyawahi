@@ -492,7 +492,8 @@ export function countEvidenceToCheck(s: Session, opts: { blockId?: string; distr
   return Number(one<{ c: number }>(`select count(*) c from evidence e where ${p.sql}`, ...p.params)?.c ?? 0);
 }
 
-/** Cases sitting at awaiting_approval that this user is empowered to decide. */
+/** Cases sitting at awaiting_approval that this user is empowered to decide. A plan the user
+ *  submitted is someone else's to approve, so it is not waiting on them. */
 export function approvalQueue(s: Session, opts: { limit?: number } = {}): { case: Case; plan: CasePlan | null; approval: Approval | null }[] {
   const levers: Lever[] = [];
   const roles = s.roles.map((r) => r.role);
@@ -504,6 +505,10 @@ export function approvalQueue(s: Session, opts: { limit?: number } = {}): { case
     casesPred(s, 'c'),
     { sql: `c.status = 'awaiting_approval'`, params: [] },
     { sql: `c.lever in (${levers.map(() => '?').join(',')})`, params: levers as Param[] },
+    {
+      sql: `not exists (select 1 from approvals a where a.case_id = c.id and a.decision = 'pending' and a.submitted_by = ?)`,
+      params: [s.user_id],
+    },
   );
   const cases = all<CaseRow>(
     `select c.* from cases c where ${p.sql}

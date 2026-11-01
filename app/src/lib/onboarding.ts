@@ -1,6 +1,6 @@
 import 'server-only';
 import { randomInt } from 'node:crypto';
-import { all, one, run, tx } from './db';
+import { all, one, run, tx, nextIdFor } from './db';
 import { loadSession, type Session } from './session';
 import { nowIso } from './clock';
 import { appendAudit, notify } from './write';
@@ -45,8 +45,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const AFFIL_RE = /^EMP-[A-Z]{2,8}-\d{3,6}$/;
 
 function nextRegId(): string {
-  const max = one<{ m: string | null }>(`select max(id) m from registration_requests`)?.m;
-  return `REG-${String((max ? Number(max.slice(4)) : 0) + 1).padStart(4, '0')}`;
+  return nextIdFor('registration', 'registration_requests', 'REG-', 4);
 }
 
 /** The designated verifier for a requested role and scope: the authority one level up. */
@@ -196,8 +195,7 @@ export function decideRegistration(s: Session, id: string, action: 'approve' | '
   }
   if (r.duplicate_of) throw new Refused('This email already belongs to an account. Reject the duplicate, or ask the person to request a change from their existing account.', 'duplicate');
   return tx(() => {
-    const max = one<{ m: string }>(`select max(id) m from users where id like 'USR-%'`)!.m;
-    const uid = `USR-${String(Number(max.slice(4)) + 1).padStart(5, '0')}`;
+    const uid = nextIdFor('user', 'users', 'USR-', 5);
     const state = pathOf(r.scope_type, r.scope_id)?.state ?? 'STA-01';
     void state;
     run(`insert into users (id, full_name, email, preferred_language, preferred_channel, is_demo_account, status, created_at, provenance) values (?,?,?,?,?,?,?,?,?)`,

@@ -41,7 +41,11 @@ export const QUESTIONS: QuestionDef[] = [
     id: 'waiting_on_me',
     label: { en: 'What is waiting on me?', hi: 'मेरी प्रतीक्षा में क्या है?' },
     run: (s, lang) => {
-      const cp = and(casesPred(s, 'c'), { sql: `c.status = 'awaiting_approval'`, params: [] });
+      const cp = and(
+        casesPred(s, 'c'),
+        { sql: `c.status = 'awaiting_approval'`, params: [] },
+        { sql: `not exists (select 1 from approvals a where a.case_id = c.id and a.decision = 'pending' and a.submitted_by = ?)`, params: [s.user_id] },
+      );
       const approvals = all<{ id: string; title: string; lever: string }>(
         `select c.id, c.title, c.lever from cases c where ${cp.sql} limit 25`, ...cp.params,
       );

@@ -19,7 +19,7 @@ npm run dev          # http://localhost:3000
 Then sign in as `beo.blk-01@demo.karyavahi.test` — no password; every account is fictional.
 
 ```bash
-npm run verify       # typecheck, read-layer scoping, write-layer rules, the audit chain
+npm run verify       # typecheck, read-layer scoping, write-layer rules, the audit chain, sessions
 npm run verify:full  # the above, plus a build, a crawl of every route, and the UI walkthrough
 ```
 
@@ -108,13 +108,16 @@ src/lib/
   clock.ts       The demo clock. Everything date-dependent reads this, not the wall clock.
   repo.ts        Reference data, geography, schools, trends.
   cases.ts       The case ledger: findings, diagnoses, plans, approvals, tasks, evidence, outcomes.
+  plans.ts       The Plan Composer and the task generator, read side: candidate schools, the
+                 pre-registration (comparison schools and threshold), the task list and owners.
   dash.ts        Dashboard rollups.
   feed.ts        Notifications, reports, the audit chain, the AI log, the outbox, imports, jobs.
   assistant.ts   Questions answered from the database, with the record ids behind each answer.
   viz.ts         Chart colour tokens (kept out of the client module — see the note in the file).
 
 src/components/  ui · labels · charts · lists · dash · case-panels · Shell · ActionForm
-src/app/         the routes, one directory per page
+src/app/         the routes, one directory per page; signed-in pages sit in the (app) group,
+                 whose layout redirects to /login before anything is streamed
 scripts/         build-db · smoke · write-test · crawl · e2e · restart · verify
 ```
 
@@ -128,23 +131,69 @@ Three layers, in this order, on every write:
 
 1. **Scope** — `scope.ts` ports each RLS policy in `sql/schema.sql` to a SQL predicate. A BEO
    sees 14 cases, a CRC 2, a headmaster one school and no staff-movement rows — the same numbers
-   Postgres produces, asserted in `scripts/smoke.ts`.
+   Postgres produces, asserted in `scripts/smoke.ts`. Only the state team, the demo admin and the
+   state auditor read state-wide; a district auditor reads their district. Import batches are
+   shown where their area overlaps yours, and their rejected rows only for schools in your area
+   (`importBatchPred`, `rejectedRowPred`); `npm run test:scope` checks these.
 2. **Role** — the matrix in `src/domain/permissions.ts`. The navigation is built from it, so a
-   role never sees a link to something it would be refused.
+   role never sees a link to something it would be refused. Every case move also has its own
+   list of roles (`TRANSITION_ROLES` in `src/domain/lifecycle.ts`; a move not listed is refused
+   for everyone), and the role that holds the move must itself cover the case's area
+   (`moveRefusal` in `src/lib/guard.ts`). Seeing a case — as a headmaster whose school is in it,
+   a task owner or an auditor — gives no authority to move it.
 3. **The rule itself** — `canTransition`, `reasonRequired`, `closureEligibility` from
    `src/domain/lifecycle.ts`, plus the specific guards: only a BEO or DEO closes a case, only
-   on an eligible outcome; nobody verifies evidence they submitted; a block-lever plan is
-   decided by a BEO or DEO and a district or PAB plan by a DEO or the state team.
+   on an eligible outcome; nobody verifies evidence they submitted; nobody approves a plan they
+   submitted (they may still send it back); a block-lever plan is decided by a BEO or DEO and a
+   district or PAB plan by a DEO or the state team. The reminder sweep and the demo clock are the
+   demo admin's alone. `npm run test:authority` checks all of this.
 
-A refusal is shown, with its reason, next to the button that caused it. Illegal transitions and
-self-verification attempts are written to the audit chain as failures **before** the exception
+## Composing a plan and assigning the work
+
+A case being looked into, sent back or reopened gets its plan in the **Plan Composer**
+(`/cases/[id]/plan`, from the case's Plan section). The officer picks an intervention from the
+ranked matches (`matchForCase` in `studio.ts`, every point explained), picks the schools, and
+previews what the plan will say before anything is saved:
+
+- **How success will be judged.** The follow-up round, the threshold from the settings in force,
+  and the comparison schools: for each plan school, the two closest on the baseline result (and
+  more lightly on enrolment) from other clusters in the district, not already in another open
+  case. This is the rule the seed used for every historical plan (`preRegistrationFor`).
+- **The work it will turn into** — one task per template, per school where the template says so.
+
+Saving (`draftPlan` in `write.ts`) recomputes all of this with the same functions, so the stored
+plan is exactly the preview. Each save is a new plan row; an unsubmitted earlier draft is marked
+`superseded`. The case takes the intervention's lever, which decides who approves. "Save and
+submit" also submits it; someone other than the submitter approves it, and approval locks the
+terms. Older plans that never had them (the seeded AI drafts) get them when submitted, or at the
+latest when approved, and never again after that.
+
+An approved plan becomes work at `/cases/[id]/assign` (`assignTasks`). Each task's owner is
+suggested from who covers it: the school's headmaster, the case's cluster coordinator (or another
+in the block), the block resource coordinator with the fewest open tasks, the district officer.
+The officer may change owners and due dates but not drop or add tasks, and the independent
+spot-check must go to someone who is not delivering the work. Every owner is notified. A case can
+no longer be moved to "Work assigned" without its tasks.
+
+A task whose owner cannot do it (leave, transfer, another duty) is moved from its own page by
+the block or district officer (`reassignTask`). The new owner must cover the task's school the
+same way, the independent check stays independent, and a reason is required; it is kept on the
+task with the previous owner, on the case timeline and in the audit chain, and both people are
+notified. Started work goes back to "assigned" for the new owner to acknowledge. A task with proof
+waiting to be checked, or already verified, stays where it is. `npm run test:plan` checks all of it.
+
+A refusal is shown, with its reason, next to the button that caused it. Illegal transitions,
+moves without authority, approvals of your own plan, hand-run sweeps and self-verification
+attempts are written to the audit chain as failures **before** the exception
 is raised, outside the transaction, so the attempt survives the rollback.
 
 ## The audit chain
 
 Append-only, SHA-256 hash-chained, using the same `ts-json-v1` scheme as the seed generator:
-each row hashes its own fields plus the previous row's hash. The auditor page checks two
-different things, because they catch different tampering:
+each row hashes its own fields plus the previous row's hash. "Previous" means previous in the
+chain's own order, `audit_events.seq`, not by timestamp, so moving the demo clock backwards
+cannot reorder the chain; the auditor page walks every row in that order. The auditor page
+checks two different things, because they catch different tampering:
 
 - **Linkage** — each `prev_hash` matches the previous `hash`. Catches an inserted or deleted row.
 - **Content** — each row's hash is recomputed from its fields. Catches an *edited* row, which
@@ -193,6 +242,17 @@ Validated with `--pairs all` against this app's white surface: CVD ΔE 9.2, norm
 24.0. Aqua is below 3:1 contrast on white, so every chart also carries direct labels and a
 table view. One y-axis, always; two measures of different scale get two charts.
 
+## Design tokens
+
+Every colour is defined once, in `src/lib/tokens.ts`: the palette, a dark variant for map and
+evidence surfaces (`surface-dark` swaps the CSS variables, so classes inside need no change), one
+severity ramp shared by hotspot chips, the map and the charts, and the chart series. Tailwind
+reads the tokens (`tailwind.config.ts`), MapLibre reads the hex values. Text sizes come from one
+scale (`text-2xs` 11px … `text-5xl` 52px); fonts are IBM Plex Sans with its matching Devanagari,
+Plex Mono, and Source Serif 4 for page and case titles, served by `next/font`. Menus and drawers
+are Radix primitives in `src/components/primitives/`, so they trap and return focus and work
+from the keyboard. `src/app/{loading,error,not-found,global-error}.tsx` cover every route.
+
 ## Language
 
 English and Hindi throughout, switchable from the header. The seed already carries Hindi for
@@ -215,6 +275,10 @@ Hindi, which is why that account opens in Devanagari.
   of reimplementing them.
 - **Demo sign-in has no password**, because there is nothing real to protect. Authority still
   comes from the role rows, so a signed-in BEO cannot read another block whatever the cookie says.
+  The cookie is a random session token, not the user id: only its SHA-256 is kept in `sessions`,
+  it lasts 12 hours, and signing out revokes it on the server. Sign-in, sign-out and the language
+  switch refuse forms posted from another site (`src/lib/http.ts`); `npm run test:session` checks
+  all of it, and `npm run test:session -- http://localhost:3000` adds the same checks over HTTP.
 - Do not replace `.data/karyavahi.db` while the server is running. It is held open in WAL mode,
   and the running process will checkpoint its own pages back over the copy. `scripts/restart.sh
   --reset` does it in the right order.

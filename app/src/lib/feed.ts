@@ -1,7 +1,7 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { all, one, j, bool, type Param } from './db';
-import { and, auditPred, aiPred, reportsPred, importPred, hasRole, type Pred } from './scope';
+import { and, auditPred, aiPred, reportsPred, importBatchPred, rejectedRowPred, hasRole, type Pred } from './scope';
 import type { Session } from './session';
 
 /** Notifications, reports, the audit chain, the AI log, the simulated outbox, imports and jobs. */
@@ -88,7 +88,7 @@ export function listAudit(
   if (opts.result) parts.push({ sql: 'a.result = ?', params: [opts.result] });
   const p = and(...parts);
   return all<AuditRow>(
-    `select a.* from audit_events a where ${p.sql} order by a.ts desc, a.id desc limit ? offset ?`,
+    `select a.* from audit_events a where ${p.sql} order by a.seq desc limit ? offset ?`,
     ...p.params, opts.limit ?? 100, opts.offset ?? 0,
   );
 }
@@ -108,7 +108,7 @@ export function auditFor(s: Session, entityType: string, entityId: string, limit
   if (p.sql === '1=0') return [];
   return all<AuditRow>(
     `select a.* from audit_events a where a.entity_type = ? and a.entity_id = ? and (${p.sql})
-      order by a.ts, a.id limit ?`,
+      order by a.seq limit ?`,
     entityType, entityId, ...p.params, limit,
   );
 }
@@ -139,7 +139,7 @@ export function auditActionCounts(s: Session, limit = 25): { action: string; c: 
  * pipe-joined string instead; those are counted as unverifiable here rather than as failures,
  * so a mixed table reports honestly instead of crying tamper.
  */
-export function verifyAuditChain(s: Session, limit = 60_000): {
+export function verifyAuditChain(s: Session): {
   checked: number;
   linked: boolean;
   firstBreakAt: string | null;
@@ -155,16 +155,18 @@ export function verifyAuditChain(s: Session, limit = 60_000): {
   };
   if (!hasRole(s, 'auditor', 'state_admin', 'demo_admin')) return empty;
 
-  const rows = all<{
-    id: string; ts: string; actor_user_id: string | null; actor_label: string; actor_role: string;
+  type ChainRow = {
+    seq: number; id: string; ts: string; actor_user_id: string | null; actor_label: string; actor_role: string;
     action: string; entity_type: string; entity_id: string; before: string | null; after: string | null;
     reason: string | null; correlation_id: string; source: string; result: string;
     prev_hash: string; hash: string; hash_version: string;
-  }>(
-    `select id, ts, actor_user_id, actor_label, actor_role, action, entity_type, entity_id,
+  };
+  // The whole chain, in its own order (seq), a page at a time so memory stays flat as it grows.
+  const page = (after: number) => all<ChainRow>(
+    `select seq, id, ts, actor_user_id, actor_label, actor_role, action, entity_type, entity_id,
             before, after, reason, correlation_id, source, result, prev_hash, hash, hash_version
-       from audit_events order by ts, id limit ?`,
-    limit,
+       from audit_events where seq > ? order by seq limit 5000`,
+    after,
   );
 
   const GENESIS = '0'.repeat(64);
@@ -173,9 +175,11 @@ export function verifyAuditChain(s: Session, limit = 60_000): {
   let firstContentBreak: string | null = null;
   let rehashed = 0;
   let unverifiable = 0;
-  const genesisOk = rows.length === 0 || rows[0].prev_hash === GENESIS;
+  let checked = 0;
+  let genesisOk = true;
 
-  for (const r of rows) {
+  for (let rows = page(0); rows.length > 0; rows = page(rows[rows.length - 1].seq)) for (const r of rows) {
+    if (checked++ === 0) genesisOk = r.prev_hash === GENESIS;
     if (r.prev_hash !== prev && firstBreak === null) firstBreak = r.id;
 
     if (r.hash_version === 'ts-json-v1') {
@@ -207,7 +211,7 @@ export function verifyAuditChain(s: Session, limit = 60_000): {
   }
 
   return {
-    checked: rows.length,
+    checked,
     linked: firstBreak === null,
     firstBreakAt: firstBreak,
     genesisOk,
@@ -269,8 +273,8 @@ export interface ImportBatchRow {
 }
 
 export function listImports(s: Session, opts: { limit?: number; datasetId?: string } = {}): ImportBatchRow[] {
-  if (importPred(s).sql === '1=0') return [];
-  const parts: Pred[] = [];
+  const parts: Pred[] = [importBatchPred(s, 'b')];
+  if (parts[0].sql === '1=0') return [];
   if (opts.datasetId) parts.push({ sql: 'b.dataset_id = ?', params: [opts.datasetId] });
   const p = and(...parts);
   return all<ImportBatchRow>(
@@ -279,23 +283,26 @@ export function listImports(s: Session, opts: { limit?: number; datasetId?: stri
 }
 
 export function getImport(s: Session, id: string): ImportBatchRow | null {
-  if (importPred(s).sql === '1=0') return null;
-  return one<ImportBatchRow>('select * from import_batches where id = ?', id);
+  const p = importBatchPred(s, 'b');
+  if (p.sql === '1=0') return null;
+  return one<ImportBatchRow>(`select b.* from import_batches b where b.id = ? and (${p.sql})`, id, ...p.params);
 }
 
 export interface RejectedRow { id: string; import_batch_id: string; row_number: number; raw: string; error_code: string; message: string }
 
 export function importRejections(s: Session, batchId: string): (Omit<RejectedRow, 'raw'> & { raw: Record<string, string> })[] {
-  if (importPred(s).sql === '1=0') return [];
+  if (!getImport(s, batchId)) return [];
+  const p = rejectedRowPred(s, 'r');
   return all<RejectedRow>(
-    'select * from import_rejected_rows where import_batch_id = ? order by row_number', batchId,
+    `select r.* from import_rejected_rows r where r.import_batch_id = ? and (${p.sql}) order by r.row_number`, batchId, ...p.params,
   ).map((r) => ({ ...r, raw: j(r.raw, {} as Record<string, string>) }));
 }
 
 export function rejectionCodeCounts(s: Session): { error_code: string; c: number }[] {
-  if (importPred(s).sql === '1=0') return [];
+  const p = rejectedRowPred(s, 'r');
+  if (p.sql === '1=0') return [];
   return all<{ error_code: string; c: number }>(
-    'select error_code, count(*) c from import_rejected_rows group by error_code order by c desc',
+    `select r.error_code, count(*) c from import_rejected_rows r where ${p.sql} group by r.error_code order by c desc`, ...p.params,
   );
 }
 

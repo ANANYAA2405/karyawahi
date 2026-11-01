@@ -206,10 +206,39 @@ export function staffEventsPred(s: Session, alias = 'staff_events'): Pred {
   return canSeeSchool(s, `${alias}.school_id`);
 }
 
-/** `audit_events`: auditors and admins see everything; a BEO/DEO sees their own cases. */
+/** Holds a role whose reach is the whole state: the state team, the demo admin, or an auditor
+ *  appointed at state level. A district auditor is not one: their reach is their district. */
+export const isStateWide = (s: Session): boolean =>
+  s.roles.some((r) => r.role === 'state_admin' || r.role === 'demo_admin' || (r.role === 'auditor' && r.scope_type === 'state'));
+
+/**
+ * A place, named by a scope type and id held in two columns (as user_roles and import_batches
+ * store them), that lies inside one of the user's scopes, at or below it. A block officer's
+ * area contains their block, its clusters and its schools, but not the district above it.
+ */
+export function unitInScope(s: Session, typeCol: string, idCol: string): Pred {
+  const arm = (type: string, table: string, cols: GeoCols): Pred => {
+    const geo = inScope(s, cols);
+    if (geo.sql === '1=0') return FALSE;
+    return {
+      sql: `${typeCol} = '${type}' and exists (select 1 from ${table} u_${type} where u_${type}.id = ${idCol} and (${geo.sql}))`,
+      params: geo.params,
+    };
+  };
+  return or(
+    arm('school', 'schools', { state: 'u_school.state_id', district: 'u_school.district_id', block: 'u_school.block_id', cluster: 'u_school.cluster_id', school: 'u_school.id' }),
+    arm('cluster', 'clusters', { state: '(select state_id from districts where id = u_cluster.district_id)', district: 'u_cluster.district_id', block: 'u_cluster.block_id', cluster: 'u_cluster.id' }),
+    arm('block', 'blocks', { state: '(select state_id from districts where id = u_block.district_id)', district: 'u_block.district_id', block: 'u_block.id' }),
+    arm('district', 'districts', { state: 'u_district.state_id', district: 'u_district.id' }),
+    arm('state', 'states', { state: 'u_state.id' }),
+  );
+}
+
+/** `audit_events`: the whole chain for state-wide roles; a BEO, DEO or district auditor sees
+ *  the entries for cases in their own area. */
 export function auditPred(s: Session, alias = 'audit_events'): Pred {
-  if (hasRole(s, 'auditor', 'state_admin', 'demo_admin')) return TRUE;
-  if (hasRole(s, 'beo', 'deo')) {
+  if (isStateWide(s)) return TRUE;
+  if (hasRole(s, 'beo', 'deo', 'auditor')) {
     return and(
       { sql: `${alias}.entity_type = 'case'`, params: [] },
       canSeeCase(s, `${alias}.entity_id`),
@@ -218,21 +247,64 @@ export function auditPred(s: Session, alias = 'audit_events'): Pred {
   return FALSE;
 }
 
-/** `ai_interactions`: my own, plus everything for auditors and admins. */
+/** `ai_interactions`: my own; everything for state-wide roles; a district auditor also reads
+ *  the questions of everyone whose role sits inside their district. */
 export function aiPred(s: Session, alias = 'ai_interactions'): Pred {
-  if (hasRole(s, 'auditor', 'state_admin', 'demo_admin')) return TRUE;
-  return { sql: `${alias}.user_id = ?`, params: [s.user_id] };
+  if (isStateWide(s)) return TRUE;
+  const mine: Pred = { sql: `${alias}.user_id = ?`, params: [s.user_id] };
+  const auditing = s.roles.filter((r) => r.role === 'auditor');
+  if (auditing.length === 0) return mine;
+  const area = unitInScope({ ...s, roles: auditing }, 'aur.scope_type', 'aur.scope_id');
+  return or(mine, {
+    sql: `exists (select 1 from user_roles aur where aur.user_id = ${alias}.user_id and (${area.sql}))`,
+    params: area.params,
+  });
 }
 
-/** `reports`: mine, anything in my scope, plus everything for state/auditor/admin. */
+/** `reports`: mine, anything in my scope, plus everything for state-wide roles. */
 export function reportsPred(s: Session, alias = 'reports'): Pred {
-  if (hasRole(s, 'state_admin', 'auditor', 'demo_admin')) return TRUE;
+  if (isStateWide(s)) return TRUE;
   return or(
     { sql: `${alias}.generated_by = ?`, params: [s.user_id] },
     ...s.roles.map((r) => ({ sql: `${alias}.scope_id = ?`, params: [r.scope_id] as Param[] })),
   );
 }
 
+/** Whether this user's role reads import data at all. Which batches and rows: below. */
 export function importPred(s: Session): Pred {
   return hasRole(s, 'beo', 'deo', 'state_admin', 'auditor', 'demo_admin') ? TRUE : FALSE;
+}
+
+/** `import_batches`: a batch whose area overlaps the user's, i.e. covers at least one school
+ *  they can see. A state-wide batch is visible to every officer; a district batch only inside it. */
+export function importBatchPred(s: Session, alias = 'import_batches'): Pred {
+  if (importPred(s).sql === '1=0') return FALSE;
+  if (isStateWide(s)) return TRUE;
+  const geo = inScope(s, { state: 'ov.state_id', district: 'ov.district_id', block: 'ov.block_id', cluster: 'ov.cluster_id', school: 'ov.id' });
+  return {
+    sql: `exists (select 1 from schools ov
+             where (case ${alias}.scope_type when 'state' then ov.state_id when 'district' then ov.district_id
+                    when 'block' then ov.block_id when 'cluster' then ov.cluster_id else ov.id end) = ${alias}.scope_id
+               and (${geo.sql}))`,
+    params: geo.params,
+  };
+}
+
+/** `import_rejected_rows`: rows for schools in the user's area. A rejected row is a school's own
+ *  data, so seeing the batch it came in is not enough. A row whose school id matches no school
+ *  (rejected for exactly that) carries no school's data, and goes to whoever can see its batch,
+ *  since they are the ones who must correct it. */
+export function rejectedRowPred(s: Session, alias = 'import_rejected_rows'): Pred {
+  if (importPred(s).sql === '1=0') return FALSE;
+  if (isStateWide(s)) return TRUE;
+  const school = `json_extract(${alias}.raw, '$.school_id')`;
+  const batch = importBatchPred(s, 'rb');
+  return or(
+    canSeeSchool(s, school),
+    {
+      sql: `not exists (select 1 from schools rs where rs.id = ${school})
+            and exists (select 1 from import_batches rb where rb.id = ${alias}.import_batch_id and (${batch.sql}))`,
+      params: batch.params,
+    },
+  );
 }

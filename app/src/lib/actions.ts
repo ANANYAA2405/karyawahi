@@ -1,8 +1,10 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { requireSession } from './session';
+import { SESSION_COOKIE, createSession, requireSession, sessionCookieOptions } from './session';
+import { isHttps, localPath } from './http';
 import { Refused } from './guard';
 import * as w from './write';
 import type { CaseStatus } from '@domain/types';
@@ -66,6 +68,69 @@ export async function decidePlanAction(_prev: State, form: FormData): Promise<St
   revalidatePath(`/cases/${caseId}`);
   revalidatePath('/approvals');
   if (res.ok) redirect(`/cases/${caseId}?done=${encodeURIComponent(res.ok)}`);
+  return res;
+}
+
+// ------------------------------------------------------------------ plan composer
+/** Save a composed plan, and submit it for approval when the officer pressed that button. A
+ *  refused submission leaves the saved draft in place and says so. */
+export async function composePlanAction(_prev: State, form: FormData): Promise<State> {
+  const s = await requireSession();
+  const caseId = str(form, 'case_id');
+  const submit = str(form, 'intent') === 'submit';
+  let saved = false;
+  const res = await attempt(() => {
+    w.draftPlan(s, {
+      caseId,
+      interventionId: str(form, 'intervention_id'),
+      schoolIds: str(form, 'school_ids').split(',').filter(Boolean),
+      rationale: str(form, 'rationale'),
+      caseVersion: Number(str(form, 'case_version')),
+    });
+    saved = true;
+    if (submit) w.transitionCase(s, caseId, 'awaiting_approval');
+  }, submit ? 'Plan saved and submitted. Another officer now has to approve it.' : 'Plan saved as a draft. Submit it from the case when it is ready.');
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath('/approvals');
+  if (res.ok) redirect(`/cases/${caseId}?done=${encodeURIComponent(res.ok)}#plan`);
+  if (saved) {
+    redirect(`/cases/${caseId}?done=${encodeURIComponent(`Plan saved as a draft, but not submitted: ${res.error}`)}#plan`);
+  }
+  return res;
+}
+
+/** Turn an approved plan into tasks, with the owners and due dates the officer settled on. */
+export async function assignTasksAction(_prev: State, form: FormData): Promise<State> {
+  const s = await requireSession();
+  const caseId = str(form, 'case_id');
+  const rows = form.getAll('row').map(String).map((rowKey) => ({
+    rowKey,
+    ownerUserId: str(form, `owner:${rowKey}`),
+    dueDate: str(form, `due:${rowKey}`),
+  }));
+  let count = 0;
+  const res = await attempt(() => {
+    count = w.assignTasks(s, { caseId, caseVersion: Number(str(form, 'case_version')), rows }).taskIds.length;
+  }, 'Tasks assigned.');
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath('/tasks');
+  if (res.ok) redirect(`/cases/${caseId}?done=${encodeURIComponent(`${count} tasks assigned. Each owner has been notified.`)}#work`);
+  return res;
+}
+
+/** Give a task to someone else, with the reason kept on the record. */
+export async function reassignTaskAction(_prev: State, form: FormData): Promise<State> {
+  const s = await requireSession();
+  const taskId = str(form, 'task_id');
+  const res = await attempt(() => {
+    w.reassignTask(s, {
+      taskId, newOwnerUserId: str(form, 'owner'), reason: str(form, 'reason'),
+      taskVersion: Number(str(form, 'task_version')),
+    });
+  }, 'Task reassigned. Both the new and the previous owner have been told.');
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath('/tasks');
+  if (res.ok) redirect(`/tasks/${taskId}?done=${encodeURIComponent(res.ok)}`);
   return res;
 }
 
@@ -176,7 +241,7 @@ export async function markReadAction(form: FormData): Promise<void> {
   else if (id) w.markNotificationRead(s, id);
   revalidatePath('/notifications');
   const to = String(form.get('then') ?? '');
-  if (to) redirect(to);
+  if (to) redirect(localPath(to));
 }
 
 // ------------------------------------------------------------------ demo controls
@@ -214,6 +279,12 @@ export async function demoResetAction(_prev: State, _form: FormData): Promise<St
     () => { w.demoReset(s); },
     'The demo has been restored to the canonical seed, and the reset itself is in the audit log.',
   );
+  // The reset replaced the database, sessions table included, which signed everyone out.
+  // Keep the admin who pressed the button signed in.
+  if (res.ok) {
+    const h = await headers();
+    (await cookies()).set(SESSION_COOKIE, createSession(s.user_id, h.get('user-agent')), sessionCookieOptions(isHttps(h)));
+  }
   revalidatePath('/', 'layout');
   return res;
 }
@@ -410,16 +481,11 @@ export async function accountStatusAction(_prev: State, form: FormData): Promise
 export async function setManagerAction(_prev: State, form: FormData): Promise<State> {
   const s = await requireSession();
   const { requirePermission } = await import('./authz');
-  const { setManager, userCard, ROLE_RANK } = await import('./org');
+  const { setManager } = await import('./org');
   const userId = str(form, 'user_id');
   const managerId = str(form, 'manager_id') || null;
   const res = await attempt(() => {
     requirePermission(s, 'manage_hierarchy', { kind: 'user', userId });
-    const u = userCard(userId);
-    const m = managerId ? userCard(managerId) : null;
-    if (managerId && (!m || m.status !== 'active')) throw new Refused('The designated authority must be an active user.', 'input');
-    if (u && m && ROLE_RANK[m.role] <= ROLE_RANK[u.role]) throw new Refused('The designated authority must hold a more senior role.', 'input');
-    if (managerId === userId) throw new Refused('A user cannot report to themselves.', 'input');
     setManager(s, userId, managerId, str(form, 'reason') || 'Reporting line updated');
   }, 'Reporting line updated.');
   revalidatePath('/admin/hierarchy');

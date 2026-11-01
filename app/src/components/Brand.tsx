@@ -19,7 +19,7 @@ export function Wordmark({ dark = false }: { dark?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
       <Logo size={30} />
-      <span className={`font-display text-[18px] font-semibold tracking-tight ${dark ? 'text-white' : 'text-ink'}`}>Karyavahi</span>
+      <span className={`font-display text-lg font-semibold tracking-tight ${dark ? 'text-white' : 'text-ink'}`}>Karyavahi</span>
     </span>
   );
 }
@@ -45,9 +45,9 @@ export function AuthFrame({ children, right }: { children: ReactNode; right?: Re
           <div className="flex items-center gap-2">{right}</div>
         </div>
       </header>
-      <main className="flex-1">{children}</main>
+      <main id="main-content" className="flex-1">{children}</main>
       <footer className="border-t border-line/70 py-5">
-        <p className="mx-auto flex max-w-6xl items-start gap-2 px-5 text-[12px] leading-relaxed text-ink-faint">
+        <p className="mx-auto flex max-w-6xl items-start gap-2 px-5 text-xs leading-relaxed text-ink-faint">
           <Icon name="info" size={14} className="mt-0.5" />
           <span>
             <strong className="font-semibold text-warn">Demo mode — fictional seed data — not actual government statistics.</strong>{' '}

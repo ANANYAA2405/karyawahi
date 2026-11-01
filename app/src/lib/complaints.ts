@@ -1,5 +1,5 @@
 import 'server-only';
-import { all, one, run, tx, nextSeq } from './db';
+import { all, one, run, tx, nextSeq, nextIdFor } from './db';
 import { and, or, inScope, type Pred } from './scope';
 import type { Session } from './session';
 import { nowIso, today, addDays, daysBetween } from './clock';
@@ -105,8 +105,12 @@ const isAuditor = (s: Session) => s.roles.some((r) => r.role === 'auditor');
 
 /** SQL predicate: complaints this user may see at all. */
 export function complaintsPred(s: Session, a = 'c'): Pred {
+  const cols = { state: `${a}.state_id`, district: `${a}.district_id`, block: `${a}.block_id`, cluster: `${a}.cluster_id`, school: `${a}.school_id` };
   const overseer = { ...s, roles: s.roles.filter((r) => ['state_admin', 'deo', 'beo', 'auditor'].includes(r.role)) };
-  const geo = isOverseer(s) ? inScope(overseer, { state: `${a}.state_id`, district: `${a}.district_id`, block: `${a}.block_id`, cluster: `${a}.cluster_id`, school: `${a}.school_id` }) : null;
+  const geo = isOverseer(s) ? inScope(overseer, cols) : null;
+  // Restricted complaints go to an auditor only for their own area: the state auditor sees them
+  // all, a district auditor sees their district's.
+  const audited = isAuditor(s) ? inScope({ ...s, roles: s.roles.filter((r) => r.role === 'auditor') }, cols) : null;
   return and(
     { sql: `(${a}.accused_user_id is null or ${a}.accused_user_id <> ?)`, params: [s.user_id] },
     or(
@@ -114,7 +118,7 @@ export function complaintsPred(s: Session, a = 'c'): Pred {
       { sql: `${a}.assigned_user_id = ?`, params: [s.user_id] },
       { sql: `exists (select 1 from complaint_events ce where ce.complaint_id = ${a}.id and ce.assigned_to = ?)`, params: [s.user_id] },
       geo ? and({ sql: `${a}.confidentiality = 'standard'`, params: [] }, geo) : null,
-      isAuditor(s) ? { sql: `${a}.confidentiality = 'restricted'`, params: [] } : null,
+      audited ? and({ sql: `${a}.confidentiality = 'restricted'`, params: [] }, audited) : null,
     ),
   );
 }
@@ -206,13 +210,10 @@ export function routeFor(reporterId: string, category: string, priority: string,
 
 // ---------------------------------------------------------------- writes
 function nextComplaintId(): string {
-  const max = one<{ m: string | null }>(`select max(id) m from complaints where id like 'CMP-%'`)?.m;
-  return `CMP-${String((max ? Number(max.slice(4)) : 0) + 1).padStart(4, '0')}`;
+  return nextIdFor('complaint', 'complaints', 'CMP-', 4);
 }
 function addEvent(cid: string, actor: Session | null, kind: string, from: string | null, to: string | null, note: string | null, internal = 0, assignedTo: string | null = null) {
-  const n = nextSeq('complaint_event');
-  const max = one<{ m: string | null }>(`select max(id) m from complaint_events`)?.m;
-  const id = `CEVT-${String(Math.max(n, (max ? Number(max.slice(5)) : 0) + 1)).padStart(5, '0')}`;
+  const id = nextIdFor('complaint_event', 'complaint_events', 'CEVT-', 5);
   run(`insert into complaint_events values (?,?,?,?,?,?,?,?,?,?,?)`, id, cid, nowIso(), actor?.user_id ?? null, actor?.full_name ?? 'system', kind, from, to, note, internal, assignedTo);
 }
 const userName = (id: string | null) => (id ? one<{ full_name: string }>('select full_name from users where id = ?', id)?.full_name ?? id : '—');
@@ -240,6 +241,12 @@ export function createComplaint(s: Session, input: NewComplaint): string {
   const restricted = cat.confidential_default === 1 || !!input.restricted;
   const accused = restricted ? (input.accusedUserId || null) : null;
   if (accused && accused === s.user_id) throw new Refused('You cannot raise a complaint about yourself.', 'input');
+  // The form offers the officers in the reporter's own reporting line; anyone else would hide the
+  // complaint from a person it was never about.
+  if (accused && ![managerOf(s.user_id), ...chainAbove(s.user_id)].includes(accused)) {
+    throw new Refused('A conduct complaint can name only an officer in your own reporting line.', 'input');
+  }
+  if (input.caseId && !getCase(s, input.caseId)) throw new Refused('That case is not in your scope.', 'scope');
   const route = routeFor(s.user_id, cat.key, input.priority, { state_id: path.state, district_id: path.district, block_id: path.block, cluster_id: path.cluster }, accused);
   if (!route.assignee) throw new Refused('No designated authority is configured above you. Ask an administrator to set your reporting line.', 'routing');
   const pol = policyFor(cat.key, input.priority)!;

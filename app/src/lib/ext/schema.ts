@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { generateGeography, unionUnit, toMultiPolygon, type GenUnit } from './geogen';
 
 /**
- * Extension schema: geography, organisational hierarchy, complaints and onboarding.
+ * Extension schema: geography, organisational hierarchy, complaints, onboarding and sign-in sessions.
  *
  * The seed's own tables are never altered. These tables are created next to them in the app's
  * SQLite copy, idempotently, every time a connection opens — so a demo reset (which restores
@@ -76,6 +76,15 @@ create table if not exists account_status_history (
   id text primary key, user_id text not null, from_status text, to_status text not null,
   actor_user_id text, reason text, ts text not null
 );
+-- Sign-in sessions. The cookie carries a random token; only its SHA-256 lives here, so a copy of
+-- the database cannot be replayed as a cookie. Created on every open, so a demo reset signs
+-- everyone out.
+create table if not exists sessions (
+  id text primary key, user_id text not null, created_at text not null, expires_at text not null,
+  revoked_at text, user_agent text
+);
+create index if not exists sessions_user on sessions(user_id);
+
 create table if not exists ext_meta (key text primary key, value text not null);
 `;
 
@@ -91,15 +100,80 @@ function geojson(u: GenUnit): string {
 export function ensureExtensions(c: DatabaseSync): void {
   c.exec(DDL);
   const v = one<{ value: string }>(c, `select value from ext_meta where key = 'version'`)?.value;
-  if (v === EXT_VERSION) return;
+  if (v !== EXT_VERSION) {
+    c.exec('begin immediate');
+    try {
+      seedGeography(c);
+      seedReporting(c);
+      seedComplaintPolicy(c);
+      seedComplaints(c);
+      seedRegistrations(c);
+      exec(c, `insert into ext_meta (key, value) values ('version', ?) on conflict(key) do update set value = excluded.value`, EXT_VERSION);
+      c.exec('commit');
+    } catch (e) {
+      try { c.exec('rollback'); } catch { /* already rolled back */ }
+      throw e;
+    }
+  }
+  migrateIntegrity(c);
+}
+
+// ---------------------------------------------------------------- integrity
+/**
+ * Keys and ordering the seed tables were loaded without. Additive only — indexes and columns,
+ * never a rebuild — so it is safe on a demo with live changes, and runs once per database
+ * (a demo reset restores the pristine file, so it runs again there).
+ *
+ * - a unique index on every `id`: lookups stop scanning, duplicate ids are refused
+ * - audit_events.seq: the chain's own order, in insert order, so moving the demo clock back
+ *   cannot reorder it (the chain was previously walked by timestamp)
+ * - a version column on cases, plans and tasks for conflict checks; every case move bumps it,
+ *   and plans and tasks start using it with collaborative editing
+ * - id counters that were seeded from the wrong prefix start from the real highest id
+ */
+export const INTEGRITY_VERSION = 'integrity-v1';
+
+function migrateIntegrity(c: DatabaseSync): void {
+  if (one<{ value: string }>(c, `select value from ext_meta where key = 'integrity'`)?.value === INTEGRITY_VERSION) return;
+  const hasColumn = (table: string, col: string) => q(c, 'select 1 from pragma_table_info(?) where name = ?', table, col).length > 0;
+  const uniqueOnId = (table: string) => q<{ name: string; unique: number }>(c, 'select name, "unique" from pragma_index_list(?)', table)
+    .some((ix) => ix.unique && q<{ name: string }>(c, 'select name from pragma_index_info(?)', ix.name).map((r) => r.name).join() === 'id');
+
   c.exec('begin immediate');
   try {
-    seedGeography(c);
-    seedReporting(c);
-    seedComplaintPolicy(c);
-    seedComplaints(c);
-    seedRegistrations(c);
-    exec(c, `insert into ext_meta (key, value) values ('version', ?) on conflict(key) do update set value = excluded.value`, EXT_VERSION);
+    const tables = q<{ name: string }>(c, `select m.name from sqlite_master m
+       where m.type = 'table' and m.name not like 'sqlite_%'
+         and exists (select 1 from pragma_table_info(m.name) p where p.name = 'id')`);
+    for (const { name } of tables) {
+      if (uniqueOnId(name)) continue;
+      try {
+        exec(c, `create unique index "${name}_id_uq" on "${name}" (id)`);
+      } catch (e) {
+        // Duplicate ids already in the data: leave the table as it was rather than refuse to start.
+        console.warn(`[integrity] ${name}: ids are not unique, no index created (${(e as Error).message})`);
+      }
+    }
+
+    if (!hasColumn('audit_events', 'seq')) {
+      exec(c, 'alter table audit_events add column seq integer');
+      exec(c, `update audit_events set seq = x.rn
+                 from (select rowid r, row_number() over (order by rowid) rn from audit_events) x
+                where x.r = audit_events.rowid`);
+      exec(c, 'create unique index audit_events_seq_uq on audit_events (seq)');
+    }
+
+    for (const t of ['cases', 'case_plans', 'tasks']) {
+      if (!hasColumn(t, 'version')) exec(c, `alter table "${t}" add column version integer not null default 0`);
+    }
+
+    for (const [name, table, prefix] of [['batch', 'import_batches', 'IMP-'], ['ai', 'ai_interactions', 'AII-']]) {
+      exec(c, `insert into app_sequences (name, value)
+                 select ?, coalesce(max(cast(substr(id, ?) as integer)), 0) from "${table}" where id like ?
+               on conflict(name) do update set value = max(app_sequences.value, excluded.value)`,
+        name, prefix.length + 1, `${prefix}%`);
+    }
+
+    exec(c, `insert into ext_meta (key, value) values ('integrity', ?) on conflict(key) do update set value = excluded.value`, INTEGRITY_VERSION);
     c.exec('commit');
   } catch (e) {
     try { c.exec('rollback'); } catch { /* already rolled back */ }

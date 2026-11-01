@@ -1,41 +1,48 @@
 import type { Config } from 'tailwindcss';
+import plugin from 'tailwindcss/plugin';
+import { PALETTE, PALETTE_DARK, SEVERITY, CHART, rgbChannels } from './src/lib/tokens';
 
 /**
- * Design tokens — "civic intelligence workspace".
+ * Design tokens — "civic intelligence workspace". The values live in src/lib/tokens.ts; this
+ * file only turns them into CSS variables and Tailwind utilities.
  *
- *   navy #101E38 · canvas #F6F4EE · teal #167D78 · amber #D9A441 · terracotta #B94B3E
- *   mist #DDE5E8 · white
- *
- * The token *names* (ink, line, paper, brand, good, warn, crit, pend) are used across every
- * route, so they are kept and mapped onto the palette. Amber is too light to carry text on the
- * ivory canvas, so `warn` (text) is a darkened amber and `amber` is the fill/indicator colour.
- * Surfaces are flat: hairline borders, elevation only for things that float (menus, drawers).
+ * Every palette colour is a variable (`--c-ink`, `--c-brand-light`, …) and the utilities read
+ * the variable, so `surface-dark` can re-point a whole region (a map, an evidence board) at the
+ * dark palette without a single class changing inside it. Surfaces are flat: hairline borders,
+ * elevation only for things that float (menus, drawers).
  */
+
+const varName = (group: string, shade: string) => `--c-${group}${shade === 'DEFAULT' ? '' : `-${shade}`}`;
+
+function cssVars(palette: Record<string, Partial<Record<string, string>>>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [group, shades] of Object.entries(palette)) {
+    for (const [shade, hex] of Object.entries(shades)) if (hex) out[varName(group, shade)] = rgbChannels(hex);
+  }
+  return out;
+}
+
+const colors = Object.fromEntries(
+  Object.entries(PALETTE).map(([group, shades]) => [
+    group,
+    Object.fromEntries(Object.keys(shades).map((shade) => [shade, `rgb(var(${varName(group, shade)}) / <alpha-value>)`])),
+  ]),
+);
+
 export default {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        ink: { DEFAULT: '#101E38', soft: '#4A5568', faint: '#7A8396' },
-        line: { DEFAULT: '#E6E2D8', strong: '#D3CEC2' },
-        paper: { DEFAULT: '#FFFFFF', sunk: '#FAF9F5', deep: '#EFECE4' },
-        ivory: { DEFAULT: '#F6F4EE', deep: '#EEEBE2' },
-        mist: { DEFAULT: '#DDE5E8', light: '#EEF2F4' },
-        navy: {
-          DEFAULT: '#101E38', 950: '#0B1529', 900: '#101E38', 800: '#18294A', 700: '#22365C',
-          600: '#3A5078', 300: '#93A2BD', 200: '#C3CCDC', 100: '#E8ECF3',
-        },
-        brand: { DEFAULT: '#167D78', dark: '#106561', light: '#E5F1F0', soft: '#6BB3AE' },
-        good: { DEFAULT: '#167D78', light: '#E5F1F0' },
-        amber: { DEFAULT: '#D9A441', light: '#FAF0DA' },
-        warn: { DEFAULT: '#8A6416', light: '#FAF0DA' },
-        crit: { DEFAULT: '#B94B3E', light: '#F8E7E4' },
-        pend: { DEFAULT: '#5B4E8C', light: '#EEEBF6' },
+        ...colors,
+        sev: Object.fromEntries(Object.entries(SEVERITY).flatMap(([k, v]) => [
+          [k, v.fill], [`${k}-text`, v.text], [`${k}-border`, v.border], [`${k}-on`, v.on],
+        ])),
       },
       fontFamily: {
-        sans: ['Inter', '"Segoe UI Variable Text"', '"Segoe UI"', 'ui-sans-serif', 'system-ui', 'Roboto', '"Noto Sans Devanagari"', 'sans-serif'],
-        display: ['Inter', '"Segoe UI Variable Display"', '"Segoe UI"', 'ui-sans-serif', 'system-ui', '"Noto Sans Devanagari"', 'sans-serif'],
-        mono: ['ui-monospace', '"Cascadia Code"', 'SFMono-Regular', 'Menlo', 'monospace'],
+        sans: ['var(--font-sans)', 'var(--font-deva)', '"Segoe UI"', 'ui-sans-serif', 'system-ui', '"Noto Sans Devanagari"', 'sans-serif'],
+        display: ['var(--font-serif)', 'var(--font-deva)', 'Georgia', '"Noto Sans Devanagari"', 'serif'],
+        mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       boxShadow: {
         card: 'none',
@@ -50,6 +57,44 @@ export default {
       },
       animation: { 'fade-in': 'fade-in .16s ease-out both', 'slide-in': 'slide-in .18s ease-out both', shimmer: 'shimmer 1.4s infinite' },
     },
+    // The type scale. Every text size in the app is one of these; sizes only, so line height
+    // still comes from the surrounding text (1.5, or 1.65 for Hindi).
+    fontSize: {
+      '2xs': '11px',
+      xs: '12px',
+      sm: '13px',
+      base: '14px',
+      md: '16px',
+      lg: '18px',
+      xl: '20px',
+      '2xl': '26px',
+      '3xl': '34px',
+      '4xl': '44px',
+      '5xl': '52px',
+    },
   },
-  plugins: [],
+  plugins: [
+    plugin(({ addBase, addComponents }) => {
+      addBase({
+        ':root': {
+          ...cssVars(PALETTE),
+          '--surface-1': CHART.surface,
+          '--series-1': CHART.series[0],
+          '--series-2': CHART.series[1],
+          '--series-3': CHART.series[2],
+          '--status-good': CHART.status.good,
+          '--status-warning': CHART.status.warning,
+          '--status-serious': CHART.status.serious,
+          '--status-critical': CHART.status.critical,
+          '--viz-grid': CHART.grid,
+          '--viz-axis': CHART.axis,
+          '--viz-ink': CHART.ink,
+          '--viz-ink-soft': CHART.inkSoft,
+        },
+      });
+      addComponents({
+        '.surface-dark': { ...cssVars(PALETTE_DARK), colorScheme: 'dark' },
+      });
+    }),
+  ],
 } satisfies Config;

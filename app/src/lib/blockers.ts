@@ -1,5 +1,5 @@
 import 'server-only';
-import { all, one, run, tx, j, getAppState, setAppState } from './db';
+import { all, one, run, tx, j, getAppState, setAppState, nextIdFor } from './db';
 import { and, canSeeCase, tasksPred, type Pred } from './scope';
 import type { Session } from './session';
 import { nowIso, today, daysBetween } from './clock';
@@ -150,8 +150,7 @@ export function reportBlocker(s: Session, input: { taskId: string; type: string;
   if (description.length < 8) throw new Refused('Describe the blocker in a sentence (8+ characters).', 'input');
 
   return tx(() => {
-    const max = one<{ m: string | null }>(`select max(id) m from blockers`)?.m;
-    const id = `BLKR-${String((max ? Number(max.slice(5)) : 0) + 1).padStart(5, '0')}`;
+    const id = nextIdFor('blocker', 'blockers', 'BLKR-', 5);
     run(`insert into blockers values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       id, t.case_id, JSON.stringify([t.id]), t.school_id, meta.key, severity, description,
       s.user_id, actingRole(s), nowIso(), 'open', meta.level, null, null, null, 'officer');

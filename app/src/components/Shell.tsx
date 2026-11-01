@@ -8,7 +8,7 @@ import { countUnread } from '@/lib/feed';
 import { countEvidenceToCheck, countTasks, approvalQueue } from '@/lib/cases';
 import { scopeName } from '@/lib/repo';
 import { ROLE_LABELS } from '@domain/permissions';
-import { Sidebar, HeaderTitle, MobileDrawer, UserMenu, LanguageToggle, type ClientNavGroup } from './Chrome';
+import { Sidebar, HeaderTitle, MobileDrawer, UserMenu, UserMenuLink, UserMenuForm, LanguageToggle, type ClientNavGroup } from './Chrome';
 import { Icon } from './Icon';
 import { fmtDate } from './ui';
 import { AssistantDrawer } from './Chat';
@@ -50,7 +50,7 @@ export default async function Shell({ children }: { children: ReactNode }) {
   }));
 
   const footer = (
-    <div className="space-y-1 text-[11.5px] text-navy-300">
+    <div className="space-y-1 text-xs text-navy-300">
       <p className="flex items-center gap-1.5" title={`Demo clock: ${nowIso()}`}>
         <Icon name="calendar" size={13} />{t(lang, 'demoClock')}: <span className="tnum font-medium text-white">{fmtDate(today())}</span>
       </p>
@@ -63,7 +63,7 @@ export default async function Shell({ children }: { children: ReactNode }) {
       <Sidebar groups={groups} homeHref={homeFor(session)} footer={footer} scope={{ name: scope, role: roleLabel }} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="bg-amber-light px-4 py-1 text-center text-[10.5px] font-semibold uppercase tracking-[0.1em] text-warn no-print" role="note">
+        <div className="bg-amber-light px-4 py-1 text-center text-2xs font-semibold uppercase tracking-[0.1em] text-warn no-print" role="note">
           {t(lang, 'demoBanner')}
         </div>
         <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-line bg-ivory/95 px-4 backdrop-blur sm:px-6 lg:px-8 no-print">
@@ -71,14 +71,14 @@ export default async function Shell({ children }: { children: ReactNode }) {
           <div className="min-w-0 flex-1">
             <HeaderTitle groups={groups} />
           </div>
-          <span className="hidden items-center gap-1.5 rounded-full border border-line bg-white px-2.5 py-1 text-[12px] text-ink-soft xl:inline-flex" title={roleLabel}>
+          <span className="hidden items-center gap-1.5 rounded-full border border-line bg-white px-2.5 py-1 text-xs text-ink-soft xl:inline-flex" title={roleLabel}>
             <Icon name="pin" size={13} className="text-ink-faint" />{scope}
           </span>
           <form action="/search" method="get" role="search" className="relative hidden md:block">
             <Icon name="search" size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
             <input type="search" name="q" aria-label={pick(lang, 'Search cases, schools, interventions', 'खोजें')}
               placeholder={pick(lang, 'Search…', 'खोजें…')}
-              className="h-9 w-52 rounded-lg border border-line bg-white pl-9 pr-3 text-[13px] text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15 xl:w-64" />
+              className="h-9 w-52 rounded-lg border border-line bg-white pl-9 pr-3 text-sm text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15 xl:w-64" />
           </form>
           <Link href="/search" className="btn-ghost px-2 md:hidden"><Icon name="search" size={19} label={t(lang, 'navSearch')} /></Link>
           {may(session, 'ai.assistant') ? <Suspense fallback={null}><AssistantDrawer configured={aiStatus().configured} userKey={session.user_id} /></Suspense> : null}
@@ -87,15 +87,13 @@ export default async function Shell({ children }: { children: ReactNode }) {
             {badges.notifications > 0 ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-crit" aria-label={`${badges.notifications} unread`} /> : null}
           </Link>
           <UserMenu name={session.full_name} role={roleLabel} scope={scope} email={session.email}>
-            <Link href="/account" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-[13px] text-ink-soft hover:bg-paper-sunk hover:text-ink"><Icon name="user" size={16} />{t(lang, 'navAccount')}</Link>
-            <Link href="/notifications" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-[13px] text-ink-soft hover:bg-paper-sunk hover:text-ink">
+            <UserMenuLink href="/account"><Icon name="user" size={16} />{t(lang, 'navAccount')}</UserMenuLink>
+            <UserMenuLink href="/notifications">
               <Icon name="bell" size={16} />{t(lang, 'navNotifications')}
-              {badges.notifications > 0 ? <span className="tnum ml-auto text-[12px] text-ink-faint">{badges.notifications}</span> : null}
-            </Link>
+              {badges.notifications > 0 ? <span className="tnum ml-auto text-xs text-ink-faint">{badges.notifications}</span> : null}
+            </UserMenuLink>
             <LanguageToggle current={lang} compact />
-            <form action="/api/sign-out" method="post">
-              <button type="submit" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-[13px] text-ink-soft hover:bg-crit-light hover:text-crit"><Icon name="logout" size={16} />{t(lang, 'signOut')}</button>
-            </form>
+            <UserMenuForm action="/api/sign-out" danger><Icon name="logout" size={16} />{t(lang, 'signOut')}</UserMenuForm>
           </UserMenu>
         </header>
 

@@ -34,24 +34,24 @@ export function ActionForm({
     <form action={formAction} className={className}>
       {Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       {children}
-      {confirm ? <p className="mb-2 text-[12.5px] leading-snug text-ink-soft">{confirm}</p> : null}
+      {confirm ? <p className="mb-2 text-sm leading-snug text-ink-soft">{confirm}</p> : null}
 
       <div className="flex flex-wrap items-center gap-2">
         <button type="submit" className={btn} disabled={pending || disabled}>
           {pending ? 'Working…' : label}
         </button>
         {disabled && disabledReason ? (
-          <span className="text-[12.5px] text-ink-faint">{disabledReason}</span>
+          <span className="text-sm text-ink-faint">{disabledReason}</span>
         ) : null}
       </div>
 
       {state.error ? (
-        <p role="alert" className="mt-2 rounded-md border border-crit/30 bg-crit-light px-3 py-2 text-[13px] leading-relaxed text-crit">
+        <p role="alert" className="mt-2 rounded-md border border-crit/30 bg-crit-light px-3 py-2 text-sm leading-relaxed text-crit">
           <span className="font-semibold">Refused. </span>{state.error}
         </p>
       ) : null}
       {state.ok ? (
-        <p role="status" className="mt-2 rounded-md border border-good/30 bg-good-light px-3 py-2 text-[13px] leading-relaxed text-good">
+        <p role="status" className="mt-2 rounded-md border border-good/30 bg-good-light px-3 py-2 text-sm leading-relaxed text-good">
           {state.ok}
         </p>
       ) : null}

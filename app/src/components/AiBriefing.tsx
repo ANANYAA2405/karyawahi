@@ -23,7 +23,7 @@ const href = (id: string) =>
 
 export function SourceChip({ id }: { id: string }) {
   return (
-    <Link href={href(id)} className="inline-flex items-center rounded border border-brand/25 bg-brand-light px-1.5 py-px font-mono text-[11px] text-brand hover:border-brand">
+    <Link href={href(id)} className="inline-flex items-center rounded border border-brand/25 bg-brand-light px-1.5 py-px font-mono text-2xs text-brand hover:border-brand">
       {id}
     </Link>
   );
@@ -32,8 +32,8 @@ export function SourceChip({ id }: { id: string }) {
 function Field({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
     <div className={wide ? 'md:col-span-2' : ''}>
-      <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">{label}</dt>
-      <dd className="mt-1 text-[14px] leading-snug text-ink">{children}</dd>
+      <dt className="text-2xs font-semibold uppercase tracking-[0.08em] text-ink-faint">{label}</dt>
+      <dd className="mt-1 text-base leading-snug text-ink">{children}</dd>
     </div>
   );
 }
@@ -66,7 +66,7 @@ export function AiBriefing({ fallback }: { fallback?: PlainBriefProps }) {
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-3">
         <div className="flex items-center gap-2.5">
           <Icon name="sparkles" size={17} className="text-brand" />
-          <h2 id="brief-title" className="text-[16px] font-semibold tracking-tight text-ink">Karyavahi Intelligence Brief</h2>
+          <h2 id="brief-title" className="text-md font-semibold tracking-tight text-ink">Karyavahi Intelligence Brief</h2>
           {stamp ? <span className={`chip ${useFallback ? 'border-line-strong bg-paper-sunk text-ink-soft' : 'border-brand/25 bg-brand-light text-brand'}`}>{stamp}</span> : null}
         </div>
         <div className="flex items-center gap-1">
@@ -90,7 +90,7 @@ export function AiBriefing({ fallback }: { fallback?: PlainBriefProps }) {
           </div>
         ) : b ? (
           <dl className={`grid gap-x-8 gap-y-4 md:grid-cols-2 xl:grid-cols-4 ${loading ? 'opacity-60' : ''}`}>
-            <Field label="Most important finding" wide><span className="text-[15px] font-semibold">{b.headline}</span></Field>
+            <Field label="Most important finding" wide><span className="text-md font-semibold">{b.headline}</span></Field>
             <Field label="Geographic impact">{b.geographic_impact ?? '—'}</Field>
             <Field label="What changed">{b.what_changed[0] ?? '—'}</Field>
             <Field label="Main operational concern" wide>{b.risks[0] ?? '—'}</Field>
@@ -99,19 +99,19 @@ export function AiBriefing({ fallback }: { fallback?: PlainBriefProps }) {
         ) : useFallback ? (
           <>
             <dl className="grid gap-x-8 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
-              <Field label="Most important finding" wide><span className="text-[15px] font-semibold">{fallback!.finding}</span></Field>
+              <Field label="Most important finding" wide><span className="text-md font-semibold">{fallback!.finding}</span></Field>
               <Field label="Geographic impact">{fallback!.geography}</Field>
               <Field label="What changed">{fallback!.changed}</Field>
               <Field label="Main operational concern" wide>{fallback!.concern}</Field>
               <Field label="Recommended next priority" wide><span className="font-medium text-brand">{fallback!.next}</span></Field>
             </dl>
-            <p className="mt-3 text-[12px] text-ink-faint">{env?.status === 'unconfigured' ? 'AI is not connected, so this summary is computed directly from the records.' : `AI brief unavailable${env?.message ? ` (${env.message})` : ''}; showing the computed summary.`}{env?.status === 'error' ? <button type="button" onClick={() => load(true)} className="ml-2 text-brand hover:underline">Retry AI</button> : null}</p>
+            <p className="mt-3 text-xs text-ink-faint">{env?.status === 'unconfigured' ? 'AI is not connected, so this summary is computed directly from the records.' : `AI brief unavailable${env?.message ? ` (${env.message})` : ''}; showing the computed summary.`}{env?.status === 'error' ? <button type="button" onClick={() => load(true)} className="ml-2 text-brand hover:underline">Retry AI</button> : null}</p>
           </>
         ) : (
-          <p className="text-[13.5px] text-ink-soft">{env?.message ?? 'No brief available.'}</p>
+          <p className="text-sm text-ink-soft">{env?.message ?? 'No brief available.'}</p>
         )}
         {showSources && sources.length ? (
-          <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-line pt-3 text-[12px] text-ink-faint">
+          <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-line pt-3 text-xs text-ink-faint">
             <span className="mr-1">Built from:</span>{sources.slice(0, 16).map((id) => <SourceChip key={id} id={id} />)}
           </div>
         ) : null}

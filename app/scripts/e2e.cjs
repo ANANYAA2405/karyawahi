@@ -1,13 +1,14 @@
 /**
  * Drives the demo story through the real UI: sign in as the Rampur Sadar block officer,
- * read CASE-0184, approve the plan, and check the case actually moved.
+ * read CASE-0184, see that the plan they submitted needs someone else's approval, then approve
+ * it as the district officer and check the case actually moved.
  */
 // playwright if installed, otherwise playwright-core driving the system Chrome.
 let chromium, launchOpts = {};
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('playwright-core')); launchOpts = { channel: 'chrome' }; }
 const SHOTS = process.env.KARYAVAHI_SHOTS ?? '/tmp/karyavahi-shots';
 require('node:fs').mkdirSync(SHOTS, { recursive: true });
-const BASE = 'http://localhost:3000';
+const BASE = process.env.KV_BASE ?? 'http://localhost:3000';
 
 let fails = 0;
 const ok = (label, cond, extra = '') => {
@@ -35,7 +36,7 @@ const ok = (label, cond, extra = '') => {
   // The BEO prefers Hindi; switch to English for the walkthrough.
   // The language switch lives in the account menu.
   await page.getByRole('button', { name: 'Account menu' }).click();
-  const toEnglish = page.getByRole('button', { name: 'Switch to English' });
+  const toEnglish = page.getByRole('menuitem', { name: 'Switch to English' });
   if (await toEnglish.count()) { await toEnglish.first().click(); await page.waitForLoadState('networkidle'); await page.waitForTimeout(500); }
 
   await page.screenshot({ path: `${SHOTS}/02-beo-dashboard.png`, fullPage: true });
@@ -66,7 +67,19 @@ const ok = (label, cond, extra = '') => {
   // full-page capture of the whole case
   await page.screenshot({ path: `${SHOTS}/05-case-full.png`, fullPage: true });
 
-  // ---- approve the plan ----
+  // ---- the block officer submitted this plan, so they cannot approve it ----
+  ok('the submitter is not offered "Approve the plan"',
+    (await page.getByRole('button', { name: /^Approve the plan$/ }).count()) === 0);
+  ok('the page says who must approve instead', caseText.includes('You submitted this plan, so another officer must approve it'));
+
+  // ---- the district officer approves it ----
+  await ctx.clearCookies();
+  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
+  await page.fill('input[name=email]', 'deo.rmp@demo.karyavahi.test');
+  await page.getByRole('button', { name: /Sign in/ }).first().click();
+  await page.waitForLoadState('networkidle');
+  await ctx.addCookies([{ name: 'kv_lang', value: 'en', url: BASE }]);
+  await page.goto(`${BASE}/cases/CASE-0184`, { waitUntil: 'networkidle' });
   await page.getByRole('button', { name: /^Approve the plan$/ }).first().click();
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(800);
@@ -77,7 +90,7 @@ const ok = (label, cond, extra = '') => {
   await page.reload({ waitUntil: 'networkidle' });
   const reloaded = await page.locator('body').innerText();
   ok('the case status is now "Plan approved"', reloaded.includes('Plan approved'));
-  ok('the approval is recorded against the officer', /Vikas Qureshi/.test(reloaded));
+  ok('the approval is recorded against the district officer', /Simran Shukla/.test(reloaded));
   ok('the audit trail shows the status change', /case\.status_changed/.test(reloaded));
   await page.screenshot({ path: `${SHOTS}/06-case-approved.png`, fullPage: true });
 
@@ -87,6 +100,80 @@ const ok = (label, cond, extra = '') => {
   ok('the next legal move is offered', next.includes('Work assigned'));
   ok('closing is listed but blocked, with the reason',
     /Closing needs an outcome evaluation|no outcome evaluation/i.test(next) || next.includes('What can happen next') || next.includes('Next moves'));
+
+  // ---- a new case from investigation to assigned work, by two officers ----
+  const signIn = async (email) => {
+    await ctx.clearCookies();
+    await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
+    await page.fill('input[name=email]', email);
+    await page.getByRole('button', { name: /Sign in/ }).first().click();
+    await page.waitForLoadState('networkidle');
+    await ctx.addCookies([{ name: 'kv_lang', value: 'en', url: BASE }]);
+  };
+  await signIn('beo.blk-17@demo.karyavahi.test');
+  await page.goto(`${BASE}/cases/CASE-0127`, { waitUntil: 'networkidle' });
+  ok('CASE-0127 is being looked into', (await page.locator('body').innerText()).includes('Being looked into'));
+  await page.getByRole('link', { name: 'Open the plan composer' }).click();
+  await page.waitForURL(/\/cases\/CASE-0127\/plan/);
+  await page.waitForLoadState('networkidle');
+  ok('the composer opens with ranked interventions', page.url().includes('/cases/CASE-0127/plan')
+    && (await page.getByRole('radio').count()) >= 2);
+  await page.getByRole('button', { name: 'Preview the plan' }).click();
+  await page.waitForURL(/\/plan\?.*iv=/);
+  await page.waitForLoadState('networkidle');
+  const previewText = await page.locator('body').innerText();
+  ok('the preview shows how success will be judged', previewText.includes('How success will be judged') && /\d+ comparison schools:/.test(previewText));
+  ok('the preview lists the work the plan turns into', /the work it will turn into/i.test(previewText));
+  await page.screenshot({ path: `${SHOTS}/06a-composer.png`, fullPage: true });
+  await page.fill('textarea[name=rationale]', 'Two driver schools lost their Class teacher in June and CRC visits stopped.');
+  await page.getByRole('button', { name: 'Save and submit for approval' }).click();
+  await page.waitForURL(/\/cases\/CASE-0127\?done=/);
+  await page.waitForLoadState('networkidle');
+  const submitted = await page.locator('body').innerText();
+  ok('saving and submitting confirms what happened', submitted.includes('Plan saved and submitted'));
+  ok('the case now waits for approval', submitted.includes('Waiting for approval'));
+  ok('the plan is labelled as written by the officer', /Officer-written|Officer written|Written by an officer/i.test(submitted));
+
+  await signIn('deo.amp@demo.karyavahi.test');
+  await page.goto(`${BASE}/cases/CASE-0127`, { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: /^Approve the plan$/ }).first().click();
+  await page.waitForURL(/\/cases\/CASE-0127\?done=/);
+  await page.waitForLoadState('networkidle');
+  ok('the district officer approves the new plan', (await page.locator('body').innerText()).includes('The work can now be assigned'));
+
+  await signIn('beo.blk-17@demo.karyavahi.test');
+  await page.goto(`${BASE}/cases/CASE-0127`, { waitUntil: 'networkidle' });
+  await page.getByRole('link', { name: 'Review and assign the tasks' }).first().click();
+  await page.waitForURL(/\/cases\/CASE-0127\/assign/);
+  await page.waitForLoadState('networkidle');
+  ok('the task list has an owner and a date for every task',
+    (await page.locator('select[name^="owner:"]').count()) > 0
+      && (await page.locator('select[name^="owner:"]').count()) === (await page.locator('input[type=date][name^="due:"]').count()));
+  await page.screenshot({ path: `${SHOTS}/06b-assign.png`, fullPage: true });
+  await page.getByRole('button', { name: /^Assign \d+ tasks$/ }).click();
+  await page.waitForURL(/\/cases\/CASE-0127\?done=/);
+  await page.waitForLoadState('networkidle');
+  const assignedText = await page.locator('body').innerText();
+  ok('assigning confirms the owners were notified', /\d+ tasks assigned\. Each owner has been notified/.test(assignedText));
+  ok('the case is now "Work assigned"', assignedText.includes('Work assigned'));
+  await page.screenshot({ path: `${SHOTS}/06c-assigned.png`, fullPage: true });
+
+  // ---- the cluster coordinator goes on leave: the officer moves their task ----
+  const spot = page.locator('a[href^="/tasks/TSK-"]', { hasText: 'Spot-assess' }).first();
+  const taskHref = await spot.getAttribute('href');
+  await page.goto(`${BASE}${taskHref}`, { waitUntil: 'networkidle' });
+  await page.locator('summary', { hasText: /^Reassign$/ }).click();
+  const target = await page.locator('select[name=owner] option:not([disabled])').first().getAttribute('value');
+  await page.selectOption('select[name=owner]', target);
+  await page.fill('textarea[name=reason]', 'CRC on medical leave until the 20th');
+  await page.getByRole('button', { name: 'Reassign the task' }).click();
+  await page.waitForURL(/\/tasks\/TSK-\d+\?done=/);
+  // The redirect is a client-side navigation: wait for the page itself, not the loading screen.
+  await page.getByText('This task was reassigned').waitFor({ timeout: 15000 });
+  const movedText = await page.locator('body').innerText();
+  ok('reassigning a task confirms both owners were told', movedText.includes('Task reassigned'));
+  ok('the task shows who had it and why it moved', movedText.includes('This task was reassigned') && movedText.includes('CRC on medical leave until the 20th'));
+  await page.screenshot({ path: `${SHOTS}/06d-reassigned.png`, fullPage: true });
 
   // ---- the other roles ----
   const roles = [
@@ -120,7 +207,7 @@ const ok = (label, cond, extra = '') => {
   await page.locator('li').first().getByRole('button', { name: /Sign in/ }).click();
   await page.waitForLoadState('networkidle');
   await page.getByRole('button', { name: 'Account menu' }).click();
-  const en2 = page.getByRole('button', { name: 'Switch to English' });
+  const en2 = page.getByRole('menuitem', { name: 'Switch to English' });
   if (await en2.count()) { await en2.first().click(); await page.waitForLoadState('networkidle'); await page.waitForTimeout(500); }
   const hmText = await page.locator('body').innerText();
   ok('the headmaster lands on their own school', page.url().includes('/school'), page.url());

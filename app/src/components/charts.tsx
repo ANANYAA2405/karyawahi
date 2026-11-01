@@ -32,7 +32,7 @@ function Legend({ series }: { series: Series[] }) {
   return (
     <ul className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
       {series.map((s) => (
-        <li key={s.key} className="flex items-center gap-1.5 text-[12px] text-ink-soft">
+        <li key={s.key} className="flex items-center gap-1.5 text-xs text-ink-soft">
           <span
             aria-hidden
             className="inline-block rounded-sm"
@@ -50,7 +50,7 @@ function TableView({
 }: { xLabels: string[]; series: Series[]; unit?: string; caption: string }) {
   return (
     <details className="mt-2 no-print">
-      <summary className="cursor-pointer text-[12px] text-ink-faint hover:text-ink-soft">
+      <summary className="cursor-pointer text-xs text-ink-faint hover:text-ink-soft">
         View as a table
       </summary>
       <table className="table mt-2">
@@ -64,7 +64,7 @@ function TableView({
         <tbody>
           {series.map((s) => (
             <tr key={s.key}>
-              <th scope="row" className="px-3 py-2 text-left text-sm font-medium text-ink">{s.label}</th>
+              <th scope="row" className="px-3 py-2 text-left text-base font-medium text-ink">{s.label}</th>
               {s.points.map((p, i) => (
                 <td key={i} className="tnum">{p === null ? '—' : `${p.toFixed(1)}${unit}`}</td>
               ))}
@@ -373,7 +373,7 @@ export function EffectInterval({
           {did > 0 ? '+' : did < 0 ? '−' : ''}{Math.abs(did).toFixed(1)} pp
         </text>
       </svg>
-      <p className="mt-1 text-[12px] leading-snug text-ink-soft">
+      <p className="mt-1 text-xs leading-snug text-ink-soft">
         {ciLow === null || ciHigh === null
           ? 'No interval could be computed — too few schools with both rounds.'
           : crossesZero
@@ -448,7 +448,7 @@ export function Sparkline({
   points, width = 90, height = 22, color = SERIES.one, label,
 }: { points: (number | null)[]; width?: number; height?: number; color?: string; label: string }) {
   const live = points.filter((p): p is number => p !== null);
-  if (live.length < 2) return <span className="text-[11px] text-ink-faint">—</span>;
+  if (live.length < 2) return <span className="text-2xs text-ink-faint">—</span>;
   const min = Math.min(...live);
   const max = Math.max(...live);
   const span = max - min || 1;

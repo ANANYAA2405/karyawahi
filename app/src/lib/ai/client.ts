@@ -1,7 +1,7 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import { aiStatus } from './config';
-import { one, run } from '../db';
+import { one, run, nextIdFor } from '../db';
 import { nowIso } from '../clock';
 import type { Session } from '../session';
 import { actingRole } from '../guard';
@@ -38,8 +38,7 @@ export function logAi(s: Session, o: {
   status: 'ok' | 'error' | 'refused' | 'unconfigured' | 'aborted' | 'rate_limited';
   usage?: { input: number; output: number; cacheRead?: number } | null; requestId?: string | null; error?: string | null; stopReason?: string | null;
 }): string {
-  const max = one<{ m: string | null }>(`select max(id) m from ai_interactions where id like 'AII-%'`)?.m;
-  const id = `AII-${String((max ? Number(max.slice(4)) : 0) + 1).padStart(6, '0')}`;
+  const id = nextIdFor('ai', 'ai_interactions', 'AII-', 6);
   const output = [
     o.tools.length ? `tools: ${[...new Set(o.tools)].join(', ')}` : 'no tools',
     o.usage ? `tokens in ${o.usage.input}${o.usage.cacheRead ? ` (cached ${o.usage.cacheRead})` : ''} / out ${o.usage.output}` : '',

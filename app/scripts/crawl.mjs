@@ -36,6 +36,11 @@ function idsFor(a) {
   return {
     complaintId,
     caseId: scopeCase,
+    // A case the composer can open, where the role's area has one.
+    planCaseId: a.scope_type === 'state' ? q(`select id from cases where status = 'under_investigation' limit 1`)
+      : a.scope_type === 'district' ? q(`select id from cases where status = 'under_investigation' and district_id = ? limit 1`, a.scope_id)
+      : a.scope_type === 'block' ? q(`select id from cases where status = 'under_investigation' and block_id = ? limit 1`, a.scope_id)
+      : null,
     taskId: q(`select id from tasks where owner_user_id = ? limit 1`, a.id)
          ?? (scopeCase ? q(`select id from tasks where case_id = ? limit 1`, scopeCase) : null),
     findingId: scopeCase ? q(`select id from findings where case_id = ? limit 1`, scopeCase) : null,
@@ -92,9 +97,35 @@ const MARKERS = ['Application error: a server-side exception', 'Internal Server 
 
 let problems = 0, checked = 0, refusals = 0;
 
-async function get(cookieId, route, lang = 'en') {
-  const res = await fetch(`${BASE}${route}`, {
-    headers: { cookie: `kv_session=${cookieId}; kv_lang=${lang}` },
+/** fetch that waits out a dev-server restart. `next dev` restarts itself when its memory gets
+ *  high, which a crawl of every route can trigger; sessions live in the database, so they survive. */
+async function fetchRetry(url, init) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await fetch(url, init); }
+    catch (e) {
+      if (!['ECONNRESET', 'ECONNREFUSED'].includes(e?.cause?.code) || attempt >= 30) throw e;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+}
+
+/** Signs in once per account the way the browser does, and keeps the session token. */
+const tokens = new Map();
+async function tokenFor(userId) {
+  if (!tokens.has(userId)) {
+    const res = await fetchRetry(`${BASE}/api/sign-in`, { method: 'POST', body: new URLSearchParams({ user_id: userId }), redirect: 'manual' });
+    const token = /kv_session=([^;]+)/.exec(res.headers.get('set-cookie') ?? '')?.[1];
+    if (res.status !== 303 || !token) throw new Error(`sign-in failed for ${userId}: ${res.status}`);
+    tokens.set(userId, token);
+  }
+  return tokens.get(userId);
+}
+
+/** `who` is a user id to sign in as, or { raw } to send that exact cookie value instead. */
+async function get(who, route, lang = 'en') {
+  const cookie = typeof who === 'object' ? who.raw : await tokenFor(who);
+  const res = await fetchRetry(`${BASE}${route}`, {
+    headers: { cookie: `kv_session=${cookie}; kv_lang=${lang}` },
     redirect: 'manual',
   });
   const body = res.status < 400 ? await res.text() : '';
@@ -106,6 +137,9 @@ for (const a of accounts) {
   const routes = [
     ...COMMON,
     ids.caseId ? `/cases/${ids.caseId}` : null,
+    ids.caseId ? `/cases/${ids.caseId}/plan` : null,
+    ids.caseId ? `/cases/${ids.caseId}/assign` : null,
+    ids.planCaseId ? `/cases/${ids.planCaseId}/plan` : null,
     ids.findingId ? `/findings/${ids.findingId}` : null,
     ids.taskId ? `/tasks/${ids.taskId}` : null,
     ids.schoolId ? `/schools/${ids.schoolId}` : null,
@@ -133,8 +167,8 @@ for (const a of accounts) {
 
 // --- the refusals that SHOULD happen ---
 console.log('\n--- scope refusals ---');
-const expectRefusal = async (label, cookieId, route, wanted) => {
-  const r = await get(cookieId, route);
+const expectRefusal = async (label, who, route, wanted) => {
+  const r = await get(who, route);
   refusals++;
   const text = r.body;
   const ok = typeof wanted === 'number'
@@ -158,7 +192,8 @@ await expectRefusal('a CRC cannot open the demo controls page', crc.id, '/admin/
 await expectRefusal('a BEO cannot pull the district map by changing the parent', IDS.has(accounts.find((a) => a.role === 'beo').id) ? accounts.find((a) => a.role === 'beo').id : crc.id, '/api/geo/map?parent=DST-01', 404);
 await expectRefusal('a CRC cannot open account approvals', crc.id, '/admin/accounts', 'does not approve or manage accounts');
 await expectRefusal('a CRC cannot read the AI log', crc.id, '/ai-log', 'can read this log');
-await expectRefusal('an unknown session is sent to sign in', 'USR-NOPE', '/cases', 'redirect-to-login');
+await expectRefusal('an unknown session is sent to sign in', { raw: 'USR-NOPE' }, '/cases', 'redirect-to-login');
+await expectRefusal('a cookie holding a real user id is not a session', { raw: blk09Beo }, '/cases', 'redirect-to-login');
 
 console.log(`\n${checked} page loads + ${refusals} refusal checks, ${problems} problem(s)`);
 process.exit(problems === 0 ? 0 : 1);

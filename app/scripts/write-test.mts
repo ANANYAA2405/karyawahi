@@ -29,6 +29,7 @@ const repo = await import('../src/lib/repo');
 const cs = await import('../src/lib/cases');
 const feed = await import('../src/lib/feed');
 const w = await import('../src/lib/write');
+const plans = await import('../src/lib/plans');
 const { Refused } = await import('../src/lib/guard');
 const { one } = await import('../src/lib/db');
 
@@ -174,18 +175,30 @@ ok('CASE-0184 starts awaiting approval', before.status === 'awaiting_approval', 
 const approval = cs.caseApprovals(beo, 'CASE-0184').find((a) => a.decision === 'pending');
 ok('there is a pending approval row', !!approval);
 const planId = before.current_plan_id!;
-const decided = w.decidePlan(beo, { caseId: 'CASE-0184', planId, decision: 'approved' });
-ok('the BEO approves the block-lever plan', decided.to === 'approved', decided.to);
+refused('the BEO who submitted the plan cannot approve it',
+  () => w.decidePlan(beo, { caseId: 'CASE-0184', planId, decision: 'approved' }), 'own_submission');
+const decided = w.decidePlan(deo, { caseId: 'CASE-0184', planId, decision: 'approved' });
+ok('the DEO approves the block-lever plan', decided.to === 'approved', decided.to);
 ok('the approval row records who decided it',
-  cs.caseApprovals(beo, 'CASE-0184').some((a) => a.decision === 'approved' && a.decided_by === beo.user_id));
+  cs.caseApprovals(beo, 'CASE-0184').some((a) => a.decision === 'approved' && a.decided_by === deo.user_id));
 ok('the plan is now approved',
   cs.planById(beo, planId)?.status === 'approved');
 ok('a case event was written',
   cs.caseTimeline(beo, 'CASE-0184').some((e) => e.to_status === 'approved'));
 ok('the audit chain recorded the status change',
   feed.auditFor(auditor, 'case', 'CASE-0184').some((a) => a.action === 'case.status_changed'));
-const assigned = w.transitionCase(beo, 'CASE-0184', 'assigned');
-ok('the case moves on to assigned', assigned.to === 'assigned');
+ok('approval locked the terms of the outcome check onto the plan',
+  !!cs.planById(beo, planId)?.pre_registration?.comparison_school_ids.length);
+refused('the case cannot be marked assigned before the plan has tasks',
+  () => w.transitionCase(beo, 'CASE-0184', 'assigned'), 'no_tasks');
+const pc184 = plans.planCase(beo, 'CASE-0184')!;
+const drafts184 = plans.taskDrafts(pc184, planId);
+const made = w.assignTasks(beo, {
+  caseId: 'CASE-0184', caseVersion: pc184.version,
+  rows: drafts184.map((d) => ({ rowKey: d.rowKey, ownerUserId: d.ownerUserId!, dueDate: d.dueDate })),
+});
+ok(`the approved plan becomes ${made.taskIds.length} tasks`, made.taskIds.length === drafts184.length && made.taskIds.length > 0);
+ok('the case moves on to assigned', cs.getCase(beo, 'CASE-0184')?.status === 'assigned');
 
 console.log('\n— reminder sweep is idempotent —');
 const first = w.reminderSweep(admin);

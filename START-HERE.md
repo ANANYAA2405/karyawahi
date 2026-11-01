@@ -49,9 +49,15 @@ The login page lists one account per role. The most interesting path through the
 2. Read the finding, then the diagnosis: 4 of the 5 driver schools lost a teacher without
    replacement, and 4 went 60+ days with no cluster visit. Every row traces to the record it
    came from.
-3. Approve the plan. That locks the comparison schools and the success threshold **before**
-   anyone knows the result.
-4. Sign out, sign in as the auditor, and open the audit trail: your approval is there, hash-chained.
+3. Look at the plan's decision box. The block officer submitted this plan, so they cannot approve
+   it: someone else has to. Sign out and sign in as the district officer
+   (`deo.rmp@demo.karyavahi.test`), open CASE-0184 and approve the plan. That locks the comparison
+   schools and the success threshold **before** anyone knows the result.
+4. Sign out, sign in as the auditor, and open the audit trail: the approval is there, hash-chained.
+   To take a case through planning yourself, sign in as `beo.blk-17@demo.karyavahi.test`, open
+   **CASE-0127** and press **Open the plan composer**: pick an intervention and schools, preview
+   how success will be judged, and submit. The district officer (`deo.amp@demo.karyavahi.test`)
+   approves it, and the block officer then turns it into tasks with **Review and assign the tasks**.
 5. Try something you should not be able to do — sign in as the cluster coordinator and open
    `/approvals`, or as a headmaster and open `/audit`. The refusal explains itself.
 
