@@ -1,8 +1,17 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { generateGeography, unionUnit, toMultiPolygon, type GenUnit } from './geogen';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  generateGeography, generateInsideReal, unionUnit, toMultiPolygon, circleRing, insideGeometry,
+  type GenUnit, type Geometry,
+} from './geogen';
+import { ensureCollabTables } from './collab-schema';
+import { ensureApiTables } from './api-schema';
+import { ensureRealData, realDataVersion } from './realdata';
+import { ensureFeedbackTables } from './feedback-schema';
 
 /**
- * Extension schema: geography, organisational hierarchy, complaints and onboarding.
+ * Extension schema: geography, organisational hierarchy, complaints, onboarding and sign-in sessions.
  *
  * The seed's own tables are never altered. These tables are created next to them in the app's
  * SQLite copy, idempotently, every time a connection opens — so a demo reset (which restores
@@ -76,6 +85,23 @@ create table if not exists account_status_history (
   id text primary key, user_id text not null, from_status text, to_status text not null,
   actor_user_id text, reason text, ts text not null
 );
+-- Sign-in sessions. The cookie carries a random token; only its SHA-256 lives here, so a copy of
+-- the database cannot be replayed as a cookie. Created on every open, so a demo reset signs
+-- everyone out.
+create table if not exists sessions (
+  id text primary key, user_id text not null, created_at text not null, expires_at text not null,
+  revoked_at text, user_agent text
+);
+create index if not exists sessions_user on sessions(user_id);
+
+-- Photos attached to proof. The file sits in .data/evidence-files under its own SHA-256, which
+-- the server computes from the bytes it received; serving a file re-hashes it first.
+create table if not exists evidence_files (
+  evidence_id text primary key, sha256 text not null, mime text not null, bytes integer not null,
+  original_name text, created_at text not null
+);
+create index if not exists evidence_files_sha on evidence_files(sha256);
+
 create table if not exists ext_meta (key text primary key, value text not null);
 `;
 
@@ -90,16 +116,242 @@ function geojson(u: GenUnit): string {
 
 export function ensureExtensions(c: DatabaseSync): void {
   c.exec(DDL);
+  // First, so deriving the demo content below can use the indexes too.
+  migratePerf(c);
+  // Round import and case threads keep their own version markers (see collab-schema.ts).
+  ensureCollabTables(c);
+  // Real schools, calibrated results and PAB costs (data/real/), before anything is derived from the schools.
+  ensureRealData(c);
+  // The read-only API for state dashboards: keys and the call log (see api-schema.ts).
+  ensureApiTables(c);
+  // What people tell us about the app: thumbs on Claude, the feedback form (see feedback-schema.ts).
+  ensureFeedbackTables(c);
   const v = one<{ value: string }>(c, `select value from ext_meta where key = 'version'`)?.value;
-  if (v === EXT_VERSION) return;
+  if (v !== EXT_VERSION) {
+    c.exec('begin immediate');
+    try {
+      seedGeography(c);
+      seedReporting(c);
+      seedComplaintPolicy(c);
+      seedComplaints(c);
+      seedRegistrations(c);
+      exec(c, `insert into ext_meta (key, value) values ('version', ?) on conflict(key) do update set value = excluded.value`, EXT_VERSION);
+      c.exec('commit');
+    } catch (e) {
+      try { c.exec('rollback'); } catch { /* already rolled back */ }
+      throw e;
+    }
+  }
+  ensureRealGeography(c);
+  migrateIntegrity(c);
+  migrateApprovalLever(c);
+  migrateReminders(c);
+  migrateProofSync(c);
+}
+
+// ---------------------------------------------------------------- speed
+/**
+ * Indexes for the columns pages filter and join on that the seed was loaded without, and a
+ * counter that moves whenever learning data changes. Additive only, once per database (a demo
+ * reset restores the pristine file, so it runs again there), and before the demo content is
+ * derived, because deriving the reporting lines looks people up by role and place.
+ *
+ * - user_roles (role, scope_id): "who is the CRC of this cluster" — asked once per account when
+ *   the reporting lines are derived, and again for every task owner the plan composer offers
+ * - users lower(email): sign-in by email
+ * - tasks school_id, evidence submitted_by: the map's per-school task counts and the "proof I
+ *   submitted" half of every evidence scope check
+ * - learning_data_gen: bumped by a trigger on every insert, update or delete in assessment_results
+ *   or schools. learning-cache.ts keeps the expensive learning sums only while it is unchanged,
+ *   so an imported round shows up on the next request, whichever code path imported it.
+ */
+export const PERF_VERSION = 'perf-v1';
+export const LEARNING_GEN_KEY = 'learning_data_gen';
+
+const PERF_INDEXES: [name: string, table: string, cols: string][] = [
+  ['ix_user_roles_role_scope', 'user_roles', '(role, scope_id)'],
+  ['ix_users_email_lower', 'users', '(lower(email))'],
+  ['ix_tasks_school', 'tasks', '(school_id)'],
+  ['ix_evi_submitter', 'evidence', '(submitted_by)'],
+];
+
+function migratePerf(c: DatabaseSync): void {
+  if (one<{ value: string }>(c, `select value from ext_meta where key = 'perf'`)?.value === PERF_VERSION) return;
   c.exec('begin immediate');
   try {
-    seedGeography(c);
-    seedReporting(c);
-    seedComplaintPolicy(c);
-    seedComplaints(c);
-    seedRegistrations(c);
-    exec(c, `insert into ext_meta (key, value) values ('version', ?) on conflict(key) do update set value = excluded.value`, EXT_VERSION);
+    for (const [name, table, cols] of PERF_INDEXES) exec(c, `create index if not exists "${name}" on "${table}" ${cols}`);
+    exec(c, `insert into ext_meta (key, value) values (?, '0') on conflict(key) do nothing`, LEARNING_GEN_KEY);
+    const bump = `insert into ext_meta (key, value) values ('${LEARNING_GEN_KEY}', '1')
+                    on conflict(key) do update set value = cast(value as integer) + 1`;
+    for (const table of ['assessment_results', 'schools']) {
+      for (const ev of ['insert', 'update', 'delete']) {
+        c.exec(`create trigger if not exists "kv_gen_${table}_${ev}" after ${ev} on "${table}" begin ${bump}; end`);
+      }
+    }
+    exec(c, `insert into ext_meta (key, value) values ('perf', ?) on conflict(key) do update set value = excluded.value`, PERF_VERSION);
+    c.exec('commit');
+  } catch (e) {
+    try { c.exec('rollback'); } catch { /* already rolled back */ }
+    throw e;
+  }
+}
+
+// ---------------------------------------------------------------- approvals
+/**
+ * Which lever each approval was decided under.
+ *
+ * A case's lever is the lever of its current plan: drafting a new plan (a block-level coaching
+ * plan replacing a district-level one, say) moves it, and a PAB referral sets it to 'pab'. An
+ * approval belongs to one plan, so the role it needs comes from the lever in force when that plan
+ * was submitted, not from whatever the case's lever is today. The seed stored only the role;
+ * this records the lever beside it (from the approval's own plan) and makes the role agree with
+ * it through requiredRoleFor(), the same rule the decision gate in guard.ts applies.
+ */
+export const APPROVALS_VERSION = 'approvals-v1';
+
+function migrateApprovalLever(c: DatabaseSync): void {
+  if (one<{ value: string }>(c, `select value from ext_meta where key = 'approvals'`)?.value === APPROVALS_VERSION) return;
+  c.exec('begin immediate');
+  try {
+    if (q(c, `select 1 from pragma_table_info('approvals') where name = 'lever'`).length === 0) {
+      exec(c, 'alter table approvals add column lever text');
+    }
+    exec(c, `update approvals set lever = coalesce(
+                (select i.lever from case_plans p join interventions i on i.id = p.intervention_id where p.id = approvals.plan_id),
+                (select cs.lever from cases cs where cs.id = approvals.case_id))
+              where lever is null`);
+    exec(c, `update approvals set required_role = case lever when 'block' then 'beo' else 'deo' end
+              where lever is not null and required_role is not (case lever when 'block' then 'beo' else 'deo' end)`);
+    exec(c, `insert into ext_meta (key, value) values ('approvals', ?) on conflict(key) do update set value = excluded.value`, APPROVALS_VERSION);
+    c.exec('commit');
+  } catch (e) {
+    try { c.exec('rollback'); } catch { /* already rolled back */ }
+    throw e;
+  }
+}
+
+// ---------------------------------------------------------------- reminders
+/**
+ * The overdue ("breach") nudge: one per task, the day after its due date passes without proof.
+ * The seed already nudged the tasks that were overdue on the seed date — an in-app "task_overdue"
+ * notification, or an "overdue_nudge" message in the outbox for people without the app — so the
+ * column is filled from those rows, with the time they were recorded. Without that, the first
+ * sweep after a reset would nudge every one of them a second time. Additive only, once per
+ * database (a demo reset restores the pristine file, so it runs again there).
+ */
+export const REMINDERS_VERSION = 'reminders-v1';
+
+function migrateReminders(c: DatabaseSync): void {
+  if (one<{ value: string }>(c, `select value from ext_meta where key = 'reminders'`)?.value === REMINDERS_VERSION) return;
+  c.exec('begin immediate');
+  try {
+    if (q(c, `select 1 from pragma_table_info('tasks') where name = 'breach_nudged_at'`).length === 0) {
+      exec(c, 'alter table tasks add column breach_nudged_at text');
+    }
+    exec(c, `update tasks set breach_nudged_at = (
+                select min(ts) from (
+                  select n.ts from notifications n where n.entity_type = 'task' and n.entity_id = tasks.id and n.kind = 'task_overdue'
+                  union all
+                  select o.ts from outbox_messages o where o.entity_type = 'task' and o.entity_id = tasks.id and o.template = 'overdue_nudge'))
+              where breach_nudged_at is null`);
+    exec(c, `insert into ext_meta (key, value) values ('reminders', ?) on conflict(key) do update set value = excluded.value`, REMINDERS_VERSION);
+    c.exec('commit');
+  } catch (e) {
+    try { c.exec('rollback'); } catch { /* already rolled back */ }
+    throw e;
+  }
+}
+
+// ---------------------------------------------------------------- offline proof and GPS
+/**
+ * Proof handed in from a phone that may have had no signal, with the phone's own location.
+ *
+ * - evidence.client_id: an id the phone makes up when the proof is first saved. A proof queued
+ *   offline can be sent twice (the page and the service worker both retry, or the answer is
+ *   lost on a weak line); the server keeps one row per (submitter, client_id), so a retry
+ *   returns the proof already recorded instead of adding another. The unique index is the
+ *   backstop under the check in submitEvidence().
+ * - evidence.gps_lat / gps_lng / gps_accuracy_m: the fix the phone reported, read once at the
+ *   moment of handing in (never tracked). gps_distance_m is what the SERVER worked out against
+ *   the school's position, and gps_status is set from that distance, never from the form.
+ *
+ * Additive only, once per database.
+ */
+export const PROOF_SYNC_VERSION = 'proof-sync-v1';
+
+function migrateProofSync(c: DatabaseSync): void {
+  if (one<{ value: string }>(c, `select value from ext_meta where key = 'proof_sync'`)?.value === PROOF_SYNC_VERSION) return;
+  const hasColumn = (col: string) => q(c, `select 1 from pragma_table_info('evidence') where name = ?`, col).length > 0;
+  c.exec('begin immediate');
+  try {
+    for (const [col, type] of [['client_id', 'text'], ['gps_lat', 'real'], ['gps_lng', 'real'], ['gps_accuracy_m', 'real'], ['gps_distance_m', 'real']]) {
+      if (!hasColumn(col)) exec(c, `alter table evidence add column ${col} ${type}`);
+    }
+    exec(c, 'create unique index if not exists evidence_client_uq on evidence (submitted_by, client_id) where client_id is not null');
+    exec(c, `insert into ext_meta (key, value) values ('proof_sync', ?) on conflict(key) do update set value = excluded.value`, PROOF_SYNC_VERSION);
+    c.exec('commit');
+  } catch (e) {
+    try { c.exec('rollback'); } catch { /* already rolled back */ }
+    throw e;
+  }
+}
+
+// ---------------------------------------------------------------- integrity
+/**
+ * Keys and ordering the seed tables were loaded without. Additive only — indexes and columns,
+ * never a rebuild — so it is safe on a demo with live changes, and runs once per database
+ * (a demo reset restores the pristine file, so it runs again there).
+ *
+ * - a unique index on every `id`: lookups stop scanning, duplicate ids are refused
+ * - audit_events.seq: the chain's own order, in insert order, so moving the demo clock back
+ *   cannot reorder it (the chain was previously walked by timestamp)
+ * - a version column on cases, plans and tasks for conflict checks; every case move bumps it,
+ *   and plans and tasks start using it with collaborative editing
+ * - id counters that were seeded from the wrong prefix start from the real highest id
+ */
+export const INTEGRITY_VERSION = 'integrity-v1';
+
+function migrateIntegrity(c: DatabaseSync): void {
+  if (one<{ value: string }>(c, `select value from ext_meta where key = 'integrity'`)?.value === INTEGRITY_VERSION) return;
+  const hasColumn = (table: string, col: string) => q(c, 'select 1 from pragma_table_info(?) where name = ?', table, col).length > 0;
+  const uniqueOnId = (table: string) => q<{ name: string; unique: number }>(c, 'select name, "unique" from pragma_index_list(?)', table)
+    .some((ix) => ix.unique && q<{ name: string }>(c, 'select name from pragma_index_info(?)', ix.name).map((r) => r.name).join() === 'id');
+
+  c.exec('begin immediate');
+  try {
+    const tables = q<{ name: string }>(c, `select m.name from sqlite_master m
+       where m.type = 'table' and m.name not like 'sqlite_%'
+         and exists (select 1 from pragma_table_info(m.name) p where p.name = 'id')`);
+    for (const { name } of tables) {
+      if (uniqueOnId(name)) continue;
+      try {
+        exec(c, `create unique index "${name}_id_uq" on "${name}" (id)`);
+      } catch (e) {
+        // Duplicate ids already in the data: leave the table as it was rather than refuse to start.
+        console.warn(`[integrity] ${name}: ids are not unique, no index created (${(e as Error).message})`);
+      }
+    }
+
+    if (!hasColumn('audit_events', 'seq')) {
+      exec(c, 'alter table audit_events add column seq integer');
+      exec(c, `update audit_events set seq = x.rn
+                 from (select rowid r, row_number() over (order by rowid) rn from audit_events) x
+                where x.r = audit_events.rowid`);
+      exec(c, 'create unique index audit_events_seq_uq on audit_events (seq)');
+    }
+
+    for (const t of ['cases', 'case_plans', 'tasks']) {
+      if (!hasColumn(t, 'version')) exec(c, `alter table "${t}" add column version integer not null default 0`);
+    }
+
+    for (const [name, table, prefix] of [['batch', 'import_batches', 'IMP-'], ['ai', 'ai_interactions', 'AII-']]) {
+      exec(c, `insert into app_sequences (name, value)
+                 select ?, coalesce(max(cast(substr(id, ?) as integer)), 0) from "${table}" where id like ?
+               on conflict(name) do update set value = max(app_sequences.value, excluded.value)`,
+        name, prefix.length + 1, `${prefix}%`);
+    }
+
+    exec(c, `insert into ext_meta (key, value) values ('integrity', ?) on conflict(key) do update set value = excluded.value`, INTEGRITY_VERSION);
     c.exec('commit');
   } catch (e) {
     try { c.exec('rollback'); } catch { /* already rolled back */ }
@@ -109,6 +361,8 @@ export function ensureExtensions(c: DatabaseSync): void {
 
 // ---------------------------------------------------------------- geography
 function seedGeography(c: DatabaseSync) {
+  // The illustrative shapes replace any real-map geography, so the real map must be re-applied.
+  exec(c, `delete from ext_meta where key = 'geo'`);
   exec(c, 'delete from geo_units'); exec(c, 'delete from geo_relationships'); exec(c, 'delete from geo_levels'); exec(c, 'delete from geo_hierarchies');
   exec(c, `insert into geo_hierarchies values ('admin', 'Administrative', 'Country → State → District → Block → Cluster → School')`);
   exec(c, `insert into geo_hierarchies values ('urban', 'Urban areas', 'Country → State → District → City → Cluster → School (city clusters only)')`);
@@ -160,10 +414,150 @@ function seedGeography(c: DatabaseSync) {
   }
 }
 
+// ---------------------------------------------------------------- the real map
+/**
+ * When data/up-geo.json is present (real OpenStreetMap boundaries for Uttar Pradesh, built by
+ * scripts/fetch-up-boundaries.mjs), the demo is placed on the real map: its three districts
+ * become Rampur, Lucknow and Varanasi with their real outlines; its blocks, clusters and schools
+ * are drawn inside them as simulated subdivisions; the other 72 districts appear with no data;
+ * the three cities are approximate circles around their real centres. The learning data stays
+ * simulated, and every unit records where its shape came from (geometry_source).
+ */
+export const GEO_FILE = join(process.cwd(), 'data', 'up-geo.json');
+const REAL_GEO_VERSION = 'up-osm-v3';
+/** The geography is redrawn whenever the real-data files change, because school positions come from them. */
+const geoVersion = () => `${REAL_GEO_VERSION}${realDataVersion() ? `+${realDataVersion()}` : ''}`;
+/** Which real district each demo district is placed in, in district id order. */
+const REAL_DISTRICTS = ['Rampur', 'Lucknow', 'Varanasi'];
+
+interface UpGeo {
+  attribution: string;
+  state: { name: string; osm_id: number; geometry: Geometry };
+  districts: { name: string; osm_id: number; geometry: Geometry }[];
+  cities: { district: string; name: string; center: [number, number]; radius_km: number }[];
+}
+
+function ensureRealGeography(c: DatabaseSync) {
+  if (!existsSync(GEO_FILE)) return;
+  if (one<{ value: string }>(c, `select value from ext_meta where key = 'geo'`)?.value === geoVersion()) return;
+  const up = JSON.parse(readFileSync(GEO_FILE, 'utf8')) as UpGeo;
+  c.exec('begin immediate');
+  try {
+    seedRealGeography(c, up);
+    exec(c, `insert into ext_meta (key, value) values ('geo', ?) on conflict(key) do update set value = excluded.value`, geoVersion());
+    c.exec('commit');
+  } catch (e) {
+    try { c.exec('rollback'); } catch { /* already rolled back */ }
+    throw e;
+  }
+}
+
+function seedRealGeography(c: DatabaseSync, up: UpGeo) {
+  const shape = (g: Geometry): string => JSON.stringify(g.type === 'Polygon' ? { type: 'MultiPolygon', coordinates: [g.coordinates] } : g);
+  const bboxOf = (g: Geometry): [number, number, number, number] => {
+    const pts = (g.type === 'Polygon' ? g.coordinates : g.coordinates.flat()).flat();
+    return [Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1])), Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))];
+  };
+
+  const state = one<{ id: string }>(c, 'select id from states limit 1')!;
+  const districts = q<{ id: string; code: string; schools: number }>(c, `select d.id, d.code, (select count(*) from schools s where s.district_id = d.id) schools from districts d order by d.id`);
+  // The demo's districts take the real names; the state takes its real name.
+  districts.forEach((d, i) => { if (REAL_DISTRICTS[i]) exec(c, 'update districts set name = ? where id = ?', REAL_DISTRICTS[i], d.id); });
+  exec(c, 'update states set name = ? where id = ?', up.state.name, state.id);
+
+  const blocks = q<{ id: string; name: string; code: string; district_id: string; schools: number }>(c, `select b.id, b.name, b.code, b.district_id, (select count(*) from schools s where s.block_id = b.id) schools from blocks b order by b.id`);
+  const clusters = q<{ id: string; name: string; block_id: string; district_id: string; schools: number }>(c, `select cl.id, cl.name, cl.block_id, cl.district_id, (select count(*) from schools s where s.cluster_id = cl.id) schools from clusters cl order by cl.id`);
+  const schools = q<{ id: string; name: string; cluster_id: string }>(c, 'select id, name, cluster_id from schools order by id');
+  const outlines = new Map<string, Geometry>();
+  districts.forEach((d, i) => { const real = up.districts.find((x) => x.name === REAL_DISTRICTS[i]); if (real) outlines.set(d.id, real.geometry); });
+  // Real school positions (UDISE+, moved a few hundred metres) when the real-data layer is on.
+  const hasProfile = !!one(c, `select 1 from sqlite_master where type = 'table' and name = 'school_profile'`);
+  const points = new Map<string, [number, number]>(hasProfile
+    ? q<{ school_id: string; lon: number; lat: number }>(c, 'select school_id, lon, lat from school_profile where lon is not null').map((r) => [r.school_id, [r.lon, r.lat]])
+    : []);
+  const g = generateInsideReal({ districts, blocks, clusters, schools, outlines, points });
+
+  exec(c, 'delete from geo_units'); exec(c, 'delete from geo_relationships'); exec(c, 'delete from geo_levels'); exec(c, 'delete from geo_hierarchies');
+  exec(c, `insert into geo_hierarchies values ('admin', 'Administrative', 'Country → State → District → Block → Cluster → School')`);
+  exec(c, `insert into geo_hierarchies values ('urban', 'Urban areas', 'Country → State → District → City → Cluster → School (city clusters only)')`);
+  [['country', 0, 'Country'], ['state', 1, 'State'], ['district', 2, 'District'], ['block', 3, 'Block'], ['cluster', 4, 'Cluster'], ['school', 5, 'School']]
+    .forEach(([l, r, lab]) => exec(c, `insert into geo_levels values ('admin', ?, ?, ?)`, l, r, lab));
+  [['country', 0, 'Country'], ['state', 1, 'State'], ['district', 2, 'District'], ['city', 3, 'City'], ['cluster', 4, 'Cluster'], ['school', 5, 'School']]
+    .forEach(([l, r, lab]) => exec(c, `insert into geo_levels values ('urban', ?, ?, ?)`, l, r, lab));
+
+  const ins = c.prepare(`insert into geo_units values (?,?,?,?,?,?,?,?,?,?)`);
+  const rel = c.prepare(`insert into geo_relationships values (?,?,?)`);
+  const putReal = (id: string, level: string, name: string, code: string | null, geom: Geometry, centroid: [number, number], note: string) =>
+    ins.run(id, level, name, code, 'osm', centroid[0], centroid[1], JSON.stringify(bboxOf(geom)), shape(geom), note);
+  const putSim = (id: string, level: string, name: string, code: string | null, u: GenUnit | undefined, note: string) =>
+    ins.run(id, level, name, code, u ? 'simulated' : 'none', u?.centroid[0] ?? null, u?.centroid[1] ?? null, u ? JSON.stringify(u.bbox) : null, u ? geojson(u) : null, note);
+
+  const OSM_NOTE = `Real boundary. ${up.attribution}`;
+  ins.run('IN', 'country', 'India', 'IN', 'none', null, null, null, null, 'Country outline not drawn; the map shows one state.');
+  const sb = bboxOf(up.state.geometry);
+  putReal(state.id, 'state', up.state.name, null, up.state.geometry, [(sb[0] + sb[2]) / 2, (sb[1] + sb[3]) / 2], OSM_NOTE);
+  rel.run(state.id, 'IN', 'admin'); rel.run(state.id, 'IN', 'urban');
+
+  // The demo districts: real outline, label placed inside by the generator.
+  districts.forEach((d, i) => {
+    const u = g.units.get(d.id);
+    if (!u || !outlines.get(d.id)) return;
+    putReal(d.id, 'district', REAL_DISTRICTS[i], d.code, outlines.get(d.id)!, u.centroid, `${OSM_NOTE} Learning data inside it is simulated.`);
+    rel.run(d.id, state.id, 'admin'); rel.run(d.id, state.id, 'urban');
+  });
+  // Every other district of the state, shown so the state view is complete, with no data.
+  for (const x of up.districts) {
+    if (REAL_DISTRICTS.includes(x.name)) continue;
+    const bb = bboxOf(x.geometry);
+    const id = `UPD-${x.osm_id}`;
+    putReal(id, 'district', x.name, null, x.geometry, [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2], `${OSM_NOTE} No demo data in this district.`);
+    rel.run(id, state.id, 'admin'); rel.run(id, state.id, 'urban');
+  }
+  const SIM_NOTE = points.size
+    ? 'Demo grouping drawn around the real positions of its schools (UDISE+). Not a real boundary.'
+    : 'Simulated subdivision drawn inside the real district outline. Not a real boundary.';
+  for (const b of blocks) { putSim(b.id, 'block', b.name, b.code, g.units.get(b.id), SIM_NOTE); rel.run(b.id, b.district_id, 'admin'); }
+  for (const cl of clusters) { putSim(cl.id, 'cluster', cl.name, null, g.units.get(cl.id), SIM_NOTE); rel.run(cl.id, cl.block_id, 'admin'); }
+  for (const s of schools) {
+    const p = g.schoolPoints.get(s.id);
+    const real = points.has(s.id);
+    ins.run(s.id, 'school', s.name, null, p ? (real ? 'udise' : 'simulated') : 'none', p?.[0] ?? null, p?.[1] ?? null, null, p ? JSON.stringify({ type: 'Point', coordinates: p }) : null,
+      real ? 'Real school (UDISE+ 2020-21), shown a few hundred metres from its true position; name withheld. Its learning results are simulated.'
+        : 'Simulated position inside its cluster. Not a real school or location.');
+    rel.run(s.id, s.cluster_id, 'admin');
+    rel.run(s.id, s.cluster_id, 'urban');
+  }
+
+  // Cities: a circle around the real city centre, made of the demo clusters whose centre falls
+  // inside it (at least the two nearest, so every city has something to show).
+  districts.forEach((d, i) => {
+    const city = up.cities.find((x) => x.district === REAL_DISTRICTS[i]);
+    if (!city) return;
+    const ring = circleRing(city.center, city.radius_km);
+    const area: Geometry = { type: 'Polygon', coordinates: [ring] };
+    const near = clusters.filter((cl) => cl.district_id === d.id && g.units.has(cl.id))
+      .map((cl) => ({ cl, u: g.units.get(cl.id)! }))
+      .sort((a, b) => ((a.u.centroid[0] - city.center[0]) ** 2 + (a.u.centroid[1] - city.center[1]) ** 2) - ((b.u.centroid[0] - city.center[0]) ** 2 + (b.u.centroid[1] - city.center[1]) ** 2));
+    const inside = near.filter((x) => insideGeometry(x.u.centroid, area));
+    const members = inside.length >= 2 ? inside : near.slice(0, 2);
+    const id = `CTY-${String(i + 1).padStart(2, '0')}`;
+    ins.run(id, 'city', city.name, null, 'approximate', city.center[0], city.center[1], JSON.stringify(bboxOf(area)), shape(area),
+      `Approximate area: a ${city.radius_km} km circle around the real city centre (${up.attribution}). Clusters inside it are simulated.`);
+    rel.run(id, d.id, 'urban');
+    for (const x of members) rel.run(x.cl.id, id, 'urban');
+  });
+}
+
 // ---------------------------------------------------------------- reporting lines
 function seedReporting(c: DatabaseSync) {
   exec(c, `delete from reporting_lines where source = 'derived_from_seed'`);
-  const first = (role: string, scope: string) => one<{ user_id: string }>(c, `select ur.user_id from user_roles ur join users u on u.id = ur.user_id where ur.role = ? and ur.scope_id = ? and u.status = 'active' order by ur.user_id limit 1`, role, scope)?.user_id ?? null;
+  // The first active holder of each role in each place, read once rather than once per account.
+  const firstHolder = new Map<string, string>();
+  for (const r of q<{ user_id: string; role: string; scope_id: string }>(c, `select ur.user_id, ur.role, ur.scope_id from user_roles ur join users u on u.id = ur.user_id where u.status = 'active' order by ur.user_id`)) {
+    const k = `${r.role}|${r.scope_id}`;
+    if (!firstHolder.has(k)) firstHolder.set(k, r.user_id);
+  }
+  const first = (role: string, scope: string) => firstHolder.get(`${role}|${scope}`) ?? null;
   const stateAdmin = one<{ user_id: string }>(c, `select user_id from user_roles where role = 'state_admin' order by user_id limit 1`)?.user_id ?? null;
   const rows = q<{ user_id: string; role: string; scope_id: string }>(c, `select user_id, role, scope_id from user_roles order by user_id`);
   const ins = c.prepare(`insert into reporting_lines (user_id, manager_user_id, relation, source, updated_at, updated_by) values (?,?,?,?,?,null) on conflict(user_id) do nothing`);

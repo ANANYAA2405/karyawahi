@@ -124,6 +124,7 @@ export const Association = ({ lang }: { lang: Language }) => (
 export function ProvenanceChip({ provenance, lang }: { provenance: Provenance | string; lang: Language }) {
   const map: Record<string, { tone: Tone; en: string; hi: string; title: string }> = {
     synthetic_demo: { tone: 'warn', en: 'Fictional demo data', hi: 'काल्पनिक डेमो डेटा', title: 'Generated for the demo. Not a real record.' },
+    udise_anonymised: { tone: 'good', en: 'Real school (UDISE+) · name withheld', hi: 'वास्तविक विद्यालय (यू-डाइस+) · नाम गोपनीय', title: 'A real government school from UDISE+ 2020-21 (India Data Portal, ODC-BY). Its name and code are withheld because its learning results here are simulated.' },
     public_historical: { tone: 'neutral', en: 'Public historical', hi: 'सार्वजनिक ऐतिहासिक', title: 'From a published public source.' },
     partner_provided: { tone: 'neutral', en: 'Partner-provided', hi: 'साझेदार द्वारा', title: 'Supplied by a partner organisation.' },
     user_uploaded: { tone: 'active', en: 'Uploaded in app', hi: 'ऐप में अपलोड', title: 'Uploaded by a user through the import wizard.' },
@@ -150,7 +151,7 @@ export function EvidenceStrength({ status, lang }: { status: string; lang: Langu
 export const OverduePill = ({ lang, days }: { lang: Language; days?: number }) => (
   <Pill tone="critical">
     <span aria-hidden>!</span>{' '}
-    {pick(lang, 'Overdue', 'विलंबित')}{days !== undefined && days > 0 ? ` · ${days}d` : ''}
+    {pick(lang, 'Overdue', 'विलंबित')}{days !== undefined && days > 0 ? ` · ${days}${pick(lang, 'd', ' दिन')}` : ''}
   </Pill>
 );
 

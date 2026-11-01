@@ -26,15 +26,20 @@ export interface NavSection extends NavItem {
   children: NavItem[];
 }
 
-/** Officer roles land on the operational overview; field roles keep their own desks. */
+/** Officer roles land on the operational overview; field roles on their day's work. */
 const OVERVIEW_ROLES = new Set(['beo', 'deo', 'state_admin', 'demo_admin']);
+const MY_DAY_ROLES = new Set(['crc', 'brc', 'headmaster']);
 
 export const homeFor = (s: Session): string =>
-  OVERVIEW_ROLES.has(s.role) ? '/overview' : ROLE_LABELS[s.role]?.home ?? '/cases';
+  OVERVIEW_ROLES.has(s.role) ? '/overview'
+  : MY_DAY_ROLES.has(s.role) ? '/today'
+  : ROLE_LABELS[s.role]?.home ?? '/cases';
 
 const isFieldRole = (s: Session) => s.roles.some((r) => ['crc', 'brc', 'headmaster'].includes(r.role));
 const isOnlyHeadmaster = (s: Session) => s.roles.every((r) => r.role === 'headmaster');
 const hasRole = (s: Session, ...roles: string[]) => s.roles.some((r) => roles.includes(r.role));
+/** Coordinators keep the desktop Field Operations workspace alongside My day. */
+const hasFieldDesk = (s: Session) => hasRole(s, 'crc', 'brc');
 
 export function navFor(s: Session): NavSection[] {
   const out: NavSection[] = [];
@@ -47,8 +52,8 @@ export function navFor(s: Session): NavSection[] {
     if (hasRole(s, 'deo')) overviewChildren.push({ href: '/district', key: 'navDistrictDesk' });
     if (hasRole(s, 'state_admin', 'demo_admin')) overviewChildren.push({ href: '/state', key: 'navStateDesk' });
   }
-  // Field roles: their home is the Field Operations workspace, listed under Operations.
-  if (home !== '/field') out.push({ href: home, key: 'navOverview', icon: 'home', children: overviewChildren });
+  if (home === '/today' && hasRole(s, 'headmaster')) overviewChildren.push({ href: '/school', key: 'navMySchool' });
+  out.push({ href: home, key: home === '/today' ? 'navToday' : 'navOverview', icon: 'home', children: overviewChildren });
 
   // 2. Learning hotspots
   if (!isOnlyHeadmaster(s)) {
@@ -81,7 +86,7 @@ export function navFor(s: Session): NavSection[] {
   if (isFieldRole(s) || may(s, 'task.update_own')) exec.push({ href: '/tasks', key: 'navTasks', badge: 'tasks' });
   if (may(s, 'evidence.verify')) exec.push({ href: '/evidence', key: 'navEvidence', badge: 'evidence' });
   if (isFieldRole(s)) exec.push({ href: '/visits', key: 'navVisits' });
-  if (home === '/field') {
+  if (hasFieldDesk(s)) {
     out.push({ href: '/field', key: 'navExecution', icon: 'clipboard', children: [{ href: '/execution', key: 'navExecutionAll' }, ...exec] });
   } else if (!isOnlyHeadmaster(s)) {
     out.push({ href: '/execution', key: 'navExecution', icon: 'clipboard', children: exec });
@@ -119,6 +124,8 @@ export function navFor(s: Session): NavSection[] {
   if (can(s, 'manage_geography') || may(s, 'audit.view')) admin.push({ href: '/admin/geography', key: 'navGeography' });
   if (may(s, 'settings.configure')) admin.push({ href: '/settings', key: 'navSettings' });
   if (may(s, 'settings.configure') || may(s, 'demo.reset')) admin.push({ href: '/admin/jobs', key: 'navJobs' });
+  if (may(s, 'api.manage_keys')) admin.push({ href: '/admin/api-keys', key: 'navApiKeys' });
+  if (may(s, 'feedback.review')) admin.push({ href: '/admin/feedback', key: 'navFeedback' });
   if (may(s, 'demo.reset')) {
     admin.push({ href: '/admin/outbox', key: 'navOutbox' });
     admin.push({ href: '/admin/demo', key: 'navDemoControls' });
@@ -126,17 +133,20 @@ export function navFor(s: Session): NavSection[] {
   if (admin.length > 0) out.push({ href: '/admin', key: 'navAdminHub', icon: 'shield', children: admin });
 
   // A role's home may also appear as a child link (the auditor's home is /audit).
-  for (const sec of out) sec.children = sec.children.filter((c) => c.href !== sec.href && (c.href !== home || sec.href === '/field'));
+  for (const sec of out) sec.children = sec.children.filter((c) => c.href !== sec.href && c.href !== home);
   return out;
 }
 
 /** The sidebar's groups. Sections not listed fall into Administration. */
 const GROUP_OF: Record<string, 'overview' | 'intelligence' | 'operations' | 'insights' | 'admin'> = {
-  navOverview: 'overview', navHotspots: 'intelligence', navSchools: 'intelligence', navCases: 'intelligence',
+  navOverview: 'overview', navToday: 'overview', navHotspots: 'intelligence', navSchools: 'intelligence', navCases: 'intelligence',
   navInterventions: 'operations', navExecution: 'operations', navTasks: 'operations', navComplaints: 'operations',
   navReports: 'insights', navAssistant: 'insights',
 };
 export const GROUP_LABEL = { overview: 'Overview', intelligence: 'Intelligence', operations: 'Operations', insights: 'Insights', admin: 'Administration' } as const;
+export const GROUP_LABEL_HI: Record<keyof typeof GROUP_LABEL, string> = {
+  overview: 'सारांश', intelligence: 'विश्लेषण', operations: 'संचालन', insights: 'अंतर्दृष्टि', admin: 'प्रशासन',
+};
 
 export function navGroups(s: Session): { key: keyof typeof GROUP_LABEL; sections: NavSection[] }[] {
   const order: (keyof typeof GROUP_LABEL)[] = ['overview', 'intelligence', 'operations', 'insights', 'admin'];

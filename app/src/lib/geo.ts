@@ -7,6 +7,7 @@ import { today } from './clock';
 import { hotspotUnits, type HotspotFilters, type HotspotUnit, type Level } from './hotspots';
 import { complaintsPred, OPEN_STATUSES } from './complaints';
 import { scopeContains, pathOf, type ScopeType } from './org';
+import { schoolsNow, areaLevel, type SchoolNow, type Level as NowLevel } from './school-now';
 
 /**
  * Map data. Returns GeoJSON for the children of one parent unit, with every layer's metric in
@@ -17,8 +18,10 @@ import { scopeContains, pathOf, type ScopeType } from './org';
  * nothing outside scope is ever serialised — not even as a greyed-out shape. Changing the URL,
  * the request payload or the map viewport changes nothing about what the server returns.
  *
- * Geometry: units carry geometry_source. In this demo every shape is 'illustrative' (the state
- * is fictional); a verified boundary dataset can be loaded into geo_units without code changes.
+ * Geometry: units carry geometry_source. 'osm' is a real boundary from OpenStreetMap (the state
+ * and its districts); 'simulated' is a block, cluster or school drawn inside a real district for
+ * the demo; 'approximate' is a city circle around its real centre; 'illustrative' is the older
+ * invented geography used when no boundary file is present.
  */
 
 export type Hierarchy = 'admin' | 'urban';
@@ -38,7 +41,14 @@ const asScope = (level: string): ScopeType | null => (ADMIN_LEVELS.includes(leve
 /** May the user open this unit as a map parent? Cities count if their district is in scope. */
 export function canOpen(s: Session, u: GeoUnitRow): boolean {
   const sc = asScope(u.level);
-  if (sc) return scopeContains(s, sc, u.id);
+  if (sc && scopeContains(s, sc, u.id)) return true;
+  // A district that exists only on the map (the state's districts with no demo data) has no row
+  // in districts, so it is open to whoever covers the whole state, and to nobody else.
+  if (sc === 'district' && !pathOf('district', u.id)) {
+    const st = parentOf(u.id, 'admin');
+    return !!st && scopeContains(s, 'state', st);
+  }
+  if (sc) return false;
   if (u.level === 'city') {
     const d = parentOf(u.id, 'urban');
     return !!d && scopeContains(s, 'district', d);
@@ -162,6 +172,22 @@ export function mapData(s: Session, opts: { parentId?: string; hierarchy?: Hiera
   if (parent.level === 'school') {
     const p = pathOf('school', parent.id)!;
     pull('cluster', p.cluster!);
+  } else if (parent.level === 'state') {
+    // Hotspots are measured against the district, so a district compared with itself says
+    // nothing. A district shows its worst block instead, and how many hot clusters it holds.
+    const ord = ['critical', 'significant', 'moderate', 'stable', 'improving', 'insufficient'];
+    for (const d of kids.filter((k) => pathOf('district', k.id))) {
+      const r = hotspotUnits(s, opts.filters ?? {}, { level: 'district', id: d.id });
+      compared = r.pair ? `${r.pair.prev.code} → ${r.pair.curr.code}` : compared;
+      const worst = [...r.units].sort((a, b) => ord.indexOf(a.severity) - ord.indexOf(b.severity) || (a.relPp ?? 0) - (b.relPp ?? 0))[0];
+      if (worst) {
+        learn.set(d.id, {
+          ...worst, id: d.id, name: d.name,
+          hotChildren: r.units.reduce((n, u) => n + (u.hotChildren ?? 0), 0),
+          reason: `Worst block: ${worst.name} — ${worst.reason}`,
+        });
+      }
+    }
   } else if (asScope(parent.level) && childLevel && childLevel !== 'city') {
     pull(parent.level as Level, parent.id);
   } else if (parent.level === 'city' || childLevel === 'city') {
@@ -182,23 +208,34 @@ export function mapData(s: Session, opts: { parentId?: string; hierarchy?: Hiera
 
   const countLevel = childLevel === 'city' ? null : childLevel;
   const cnt = countLevel ? counts(s, countLevel, kids.map((k) => k.id)) : null;
+  const now = situation(s, childLevel, kids.map((k) => k.id));
+  const hasKids = new Set(all<{ id: string }>(
+    `select distinct parent_id id from geo_relationships where hierarchy_id = ? and parent_id in (${kids.map(() => '?').join(',') || "''"})`,
+    h, ...kids.map((k) => k.id),
+  ).map((r) => r.id));
 
   const features: GeoJSON.Feature[] = kids.filter((k) => k.boundary).map((k) => {
     const u = learn.get(k.id);
     const tasks = cnt?.tasks.get(k.id) ?? 0;
+    // A district on the map with no demo data behind it: drawn faintly, never hatched as
+    // "too few students", because there are no students at all.
+    const noData = k.geometry_source === 'osm' && k.level === 'district' && !pathOf('district', k.id) ? 1 : 0;
     return {
       type: 'Feature', id: k.id,
       geometry: JSON.parse(k.boundary!),
       properties: {
         id: k.id, name: k.name, level: k.level, geometry_source: k.geometry_source, lon: k.centroid_lon, lat: k.centroid_lat,
         severity: sev(u), relPp: u?.relPp ?? null, overallRelPp: u?.overallRelPp ?? null, prevPct: u?.focus?.prevPct ?? u?.prevPct ?? null, currPct: u?.focus?.currPct ?? u?.currPct ?? null,
-        z: u?.z ?? null, nCurr: u?.nCurr ?? 0, reason: u?.reason ?? 'No assessment data in scope',
+        z: u?.z ?? null, nCurr: u?.nCurr ?? 0,
         focus: u?.focus ? `Class ${u.focus.grade} ${u.focus.competency_id}` : null, hotChildren: u?.hotChildren ?? 0, schools: u?.schools ?? 0,
         critical: cnt?.critical.get(k.id) ?? 0, openCases: cnt?.open.get(k.id) ?? u?.openCases ?? 0, overdue: cnt?.overdue.get(k.id) ?? u?.overdueTasks ?? 0,
         complaints: cnt?.complaints.get(k.id) ?? 0, improved: cnt?.improved.get(k.id) ?? 0,
         delivery: tasks ? Math.round((100 * (cnt?.verified.get(k.id) ?? 0)) / tasks) : null, deliveryTasks: tasks,
-        insufficient: sev(u) === 'insufficient' ? 1 : 0,
-        canDrill: k.level !== 'school' ? 1 : 0,
+        insufficient: sev(u) === 'insufficient' && !noData ? 1 : 0,
+        canDrill: k.level !== 'school' && hasKids.has(k.id) ? 1 : 0,
+        noData,
+        reason: noData ? 'No demo data in this district' : u?.reason ?? 'No assessment data in scope',
+        ...now.get(k.id),
       },
     };
   });
@@ -221,8 +258,60 @@ export function mapData(s: Session, opts: { parentId?: string; hierarchy?: Hiera
     parent: { id: parent.id, name: parent.name, level: parent.level, bbox, geometry_source: parent.geometry_source, note: parent.note },
     childLevel, crumbs: breadcrumbs(s, parent.id, h), hierarchy: h, hasUrban,
     features: { type: 'FeatureCollection', features }, outline, compared,
-    sources: { geometry: 'illustrative', attribution: 'Illustrative geography generated for a fictional state — not real boundaries or locations.' },
+    sources: realMap()
+      ? { geometry: 'osm', attribution: realSchools()
+        ? 'Real boundaries © OpenStreetMap contributors (ODbL). Schools are real (UDISE+ via India Data Portal, ODC-BY; names withheld, pins moved a few hundred metres); blocks, clusters and all learning figures are simulated.'
+        : 'Real boundaries © OpenStreetMap contributors (ODbL). Blocks, clusters, school positions and all figures are simulated.' }
+      : { geometry: 'illustrative', attribution: 'Illustrative geography generated for a fictional state — not real boundaries or locations.' },
   };
+}
+
+/** True when the state is drawn from real boundaries rather than the illustrative shapes. */
+const realMap = () => one<{ g: string }>(`select geometry_source g from geo_units where level = 'state' limit 1`)?.g === 'osm';
+const realSchools = () => one<{ g: string }>(`select geometry_source g from geo_units where level = 'school' and geometry_source = 'udise' limit 1`)?.g === 'udise';
+
+/**
+ * The "right now" figures for each child on the map: a school's own (teachers, last visit,
+ * attendance), or for a larger area, how many of its schools are in each condition and an
+ * overall level. Only schools the reader can see are counted.
+ */
+function situation(s: Session, childLevel: string | null, ids: string[]): Map<string, Record<string, unknown>> {
+  const out = new Map<string, Record<string, unknown>>();
+  if (!childLevel || ids.length === 0) return out;
+  const one_ = (n: SchoolNow) => ({
+    enrolment: n.enrolment, teachersShort: n.teachers.short, teachersSanctioned: n.teachers.sanctioned,
+    netTransfersOut: n.netTransfersOut, daysSinceVisit: n.daysSinceVisit, attChange: n.attendance.change,
+    teacherLevel: n.teacherLevel, visitLevel: n.visitLevel, attendanceLevel: n.attendanceLevel,
+  });
+  if (childLevel === 'school') {
+    for (const [id, n] of schoolsNow(s, ids)) out.set(id, one_(n));
+    return out;
+  }
+  // Which schools sit in each child area.
+  const inIds = `(${ids.map(() => '?').join(',')})`;
+  const rows = childLevel === 'city'
+    ? all<{ id: string; area: string }>(
+      `select sc.id, r.parent_id area from schools sc join geo_relationships r on r.child_id = sc.cluster_id and r.hierarchy_id = 'urban'
+        where r.parent_id in ${inIds}`, ...ids)
+    : ['district', 'block', 'cluster'].includes(childLevel)
+      ? all<{ id: string; area: string }>(`select id, ${childLevel}_id area from schools where ${childLevel}_id in ${inIds}`, ...ids)
+      : [];
+  const now = schoolsNow(s, rows.map((r) => r.id));
+  const byArea = new Map<string, SchoolNow[]>();
+  for (const r of rows) { const n = now.get(r.id); if (n) byArea.set(r.area, [...(byArea.get(r.area) ?? []), n]); }
+  const bad = (l: NowLevel) => l === 'critical' || l === 'significant';
+  for (const [area, list] of byArea) {
+    out.set(area, {
+      teacherLevel: areaLevel(list.map((n) => n.teacherLevel)),
+      visitLevel: areaLevel(list.map((n) => n.visitLevel)),
+      attendanceLevel: areaLevel(list.map((n) => n.attendanceLevel)),
+      schoolsShort: list.filter((n) => bad(n.teacherLevel)).length,
+      schoolsUnvisited: list.filter((n) => bad(n.visitLevel)).length,
+      schoolsAttendanceDown: list.filter((n) => bad(n.attendanceLevel)).length,
+      schoolsCounted: list.length,
+    });
+  }
+  return out;
 }
 
 /** Search for places the user may open. */

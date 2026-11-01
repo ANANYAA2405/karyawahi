@@ -1,5 +1,6 @@
 import 'server-only';
 import { all, type Param } from './db';
+import { learningRows } from './learning-cache';
 import { and, schoolsPred, casesPred, tasksPred, type Pred } from './scope';
 import type { Session } from './session';
 import { today } from './clock';
@@ -109,7 +110,7 @@ function schoolTotals(s: Session, pair: RoundPair, f: HotspotFilters, parent?: {
   ];
   if (parent && parent.level !== 'school') parts.push({ sql: `sc.${parent.level}_id = ?`, params: [parent.id] });
   const p = and(...parts);
-  return all<{
+  return learningRows<{
     school_id: string; name: string; cluster_id: string; block_id: string; district_id: string;
     round_id: string; n: number; prof: number; enrolled: number;
   }>(
@@ -129,7 +130,7 @@ function schoolTotals(s: Session, pair: RoundPair, f: HotspotFilters, parent?: {
  */
 function districtChange(pair: RoundPair, f: HotspotFilters): Map<string, number> {
   const p = and({ sql: 'ar.round_id in (?, ?)', params: [pair.prev.id, pair.curr.id] }, ...rowFilter(f));
-  const rows = all<{ district_id: string; round_id: string; n: number; prof: number }>(
+  const rows = learningRows<{ district_id: string; round_id: string; n: number; prof: number }>(
     `select sc.district_id, ar.round_id, sum(ar.n_assessed) n, sum(ar.n_proficient) prof
        from assessment_results ar join schools sc on sc.id = ar.school_id
       where ${p.sql} group by sc.district_id, ar.round_id`,
@@ -274,13 +275,13 @@ function cellStats(s: Session, level: Level, pair: RoundPair, f: HotspotFilters,
   const parts: Pred[] = [schoolsPred(s, 'sc'), { sql: 'ar.round_id in (?, ?)', params: [pair.prev.id, pair.curr.id] }, ...rowFilter(f)];
   if (parent && parent.level !== 'school') parts.push({ sql: `sc.${parent.level}_id = ?`, params: [parent.id] });
   const p = and(...parts);
-  const rows = all<{ uid: string; district_id: string; grade: number; competency_id: string; round_id: string; n: number; prof: number }>(
+  const rows = learningRows<{ uid: string; district_id: string; grade: number; competency_id: string; round_id: string; n: number; prof: number }>(
     `select ${col} uid, min(sc.district_id) district_id, ar.grade, ar.competency_id, ar.round_id, sum(ar.n_assessed) n, sum(ar.n_proficient) prof
        from assessment_results ar join schools sc on sc.id = ar.school_id
       where ${p.sql} group by ${col}, ar.grade, ar.competency_id, ar.round_id`, ...p.params,
   );
   const dp = and({ sql: 'ar.round_id in (?, ?)', params: [pair.prev.id, pair.curr.id] }, ...rowFilter(f));
-  const dRows = all<{ district_id: string; grade: number; competency_id: string; round_id: string; n: number; prof: number }>(
+  const dRows = learningRows<{ district_id: string; grade: number; competency_id: string; round_id: string; n: number; prof: number }>(
     `select sc.district_id, ar.grade, ar.competency_id, ar.round_id, sum(ar.n_assessed) n, sum(ar.n_proficient) prof
        from assessment_results ar join schools sc on sc.id = ar.school_id where ${dp.sql}
       group by sc.district_id, ar.grade, ar.competency_id, ar.round_id`, ...dp.params,
@@ -413,7 +414,7 @@ export function unitBreakdown(s: Session, level: Level, id: string, f: HotspotFi
   ];
   if (f.grade) parts.push({ sql: 'ar.grade = ?', params: [f.grade] });
   const p = and(...parts);
-  const rows = all<{ grade: number; competency_id: string; round_id: string; n: number; prof: number; district_id: string }>(
+  const rows = learningRows<{ grade: number; competency_id: string; round_id: string; n: number; prof: number; district_id: string }>(
     `select ar.grade, ar.competency_id, ar.round_id, sum(ar.n_assessed) n, sum(ar.n_proficient) prof, min(sc.district_id) district_id
        from assessment_results ar join schools sc on sc.id = ar.school_id
       where ${p.sql} group by ar.grade, ar.competency_id, ar.round_id`,
@@ -428,7 +429,7 @@ export function unitBreakdown(s: Session, level: Level, id: string, f: HotspotFi
     byKey.set(k, e);
   }
   // District reference change per grade × competency, in one aggregate query.
-  const dRows = all<{ district_id: string; grade: number; competency_id: string; round_id: string; n: number; prof: number }>(
+  const dRows = learningRows<{ district_id: string; grade: number; competency_id: string; round_id: string; n: number; prof: number }>(
     `select sc.district_id, ar.grade, ar.competency_id, ar.round_id, sum(ar.n_assessed) n, sum(ar.n_proficient) prof
        from assessment_results ar join schools sc on sc.id = ar.school_id
       where ar.round_id in (?, ?) and ar.metric_id = 'MET-PCT-PROF' and sc.district_id = ?

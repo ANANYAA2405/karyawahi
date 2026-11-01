@@ -26,6 +26,9 @@ const STAGE_OF: Record<CaseStatus, number> = {
   closed: 6, referred_pab: 6, dismissed: 6,
 };
 export const stageIndex = (s: CaseStatus) => STAGE_OF[s] ?? 0;
+/** The statuses that make up one stage, for filtering by stage. */
+export const statusesForStage = (i: number): CaseStatus[] =>
+  (Object.entries(STAGE_OF) as [CaseStatus, number][]).filter(([, v]) => v === i).map(([k]) => k);
 
 const NEXT: Record<CaseStatus, { en: string; hi: string }> = {
   detected: { en: 'Start investigation', hi: 'जाँच शुरू करें' },

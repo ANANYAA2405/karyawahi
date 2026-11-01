@@ -1,5 +1,6 @@
 import 'server-only';
 import { all, one } from './db';
+import { learningRows } from './learning-cache';
 import { and, casesPred, schoolsPred, findingsPred } from './scope';
 import type { Session } from './session';
 import { today, nowIso, daysBetween } from './clock';
@@ -193,11 +194,11 @@ export function recentActivity(s: Session, limit = 8): ActivityItem[] {
 export function learningTrend(s: Session): { labels: string[]; scope: (number | null)[]; state: (number | null)[]; scopeLabel: string } {
   const done = rounds().filter((r) => r.status === 'completed');
   const sp = schoolsPred(s, 'sc');
-  const mine = new Map(all<{ round_id: string; pct: number }>(
+  const mine = new Map(learningRows<{ round_id: string; pct: number }>(
     `select ar.round_id, 100.0 * sum(ar.n_proficient) / nullif(sum(ar.n_assessed), 0) pct
        from assessment_results ar join schools sc on sc.id = ar.school_id where ${sp.sql} group by ar.round_id`, ...sp.params,
   ).map((r) => [r.round_id, r.pct]));
-  const state = new Map(all<{ round_id: string; pct: number }>(
+  const state = new Map(learningRows<{ round_id: string; pct: number }>(
     `select round_id, 100.0 * sum(n_proficient) / nullif(sum(n_assessed), 0) pct from assessment_results group by round_id`,
   ).map((r) => [r.round_id, r.pct]));
   const r1 = (x: number | undefined) => (x === undefined || x === null ? null : Math.round(x * 10) / 10);

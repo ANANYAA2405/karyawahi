@@ -1,6 +1,6 @@
 import 'server-only';
 import { all, run, nextId, tx } from './db';
-import { and, casesPred, canSeeCase, findingsPred, importPred, type Pred } from './scope';
+import { and, casesPred, canSeeCase, findingsPred, importBatchPred, type Pred } from './scope';
 import type { Session } from './session';
 import { today, nowIso, daysBetween } from './clock';
 import { may, actingRole } from './guard';
@@ -319,7 +319,7 @@ export function buildReport(s: Session, o: ReportOptions): BuiltReport | null {
     `select f.id, f.round_id, cl.name cluster, f.grade, f.competency_id, f.participation_rate, f.schools_reporting, f.schools_total
        from findings f left join clusters cl on cl.id = f.cluster_id where ${fp.sql} order by f.round_id desc, f.id`, ...fp.params,
   );
-  const ip = importPred(s);
+  const ip = importBatchPred(s, 'import_batches');
   const imports = all<{ id: string; file_name: string; status: string; total_rows: number; rejected_rows: number; uploaded_at: string }>(
     `select id, file_name, status, total_rows, rejected_rows, uploaded_at from import_batches where ${ip.sql} order by uploaded_at desc`, ...ip.params,
   );

@@ -227,13 +227,15 @@ db.exec(`create table if not exists app_sequences (name text primary key, value 
 const seqStmt = db.prepare(`insert into app_sequences (name, value) values (?, ?)
                             on conflict(name) do update set value = excluded.value`);
 seqStmt.run('audit', maxId('audit_events', 'AUD-'));
-seqStmt.run('notification', db.prepare(`select count(*) as c from notifications`).get().c);
-seqStmt.run('case_event', db.prepare(`select count(*) as c from case_events`).get().c);
+seqStmt.run('notification', maxId('notifications', 'NTF-'));
+seqStmt.run('case_event', maxId('case_events', 'CEV-'));
 seqStmt.run('evidence', maxId('evidence', 'EVD-'));
-seqStmt.run('job', db.prepare(`select count(*) as c from system_jobs`).get().c);
-seqStmt.run('batch', maxId('import_batches', 'IMB-'));
+seqStmt.run('job', maxId('system_jobs', 'JOB-'));
+seqStmt.run('batch', maxId('import_batches', 'IMP-'));
 seqStmt.run('report', maxId('reports', 'RPT-'));
-seqStmt.run('ai', maxId('ai_interactions', 'AIX-'));
+seqStmt.run('ai', maxId('ai_interactions', 'AII-'));
+seqStmt.run('outcome', maxId('outcome_evaluations', 'OUT-'));
+seqStmt.run('approval', maxId('approvals', 'APR-'));
 
 const integrity = db.prepare('pragma integrity_check').get();
 db.close();

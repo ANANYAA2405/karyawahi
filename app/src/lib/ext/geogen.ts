@@ -32,14 +32,26 @@ function h(...xs: (string | number)[]): number {
   return (a >>> 0) / 4294967296;
 }
 
-const SIZE = 0.022; // hex radius in degrees
 const SQ3 = Math.sqrt(3);
 const key = (q: number, r: number) => `${q},${r}`;
-const center = (q: number, r: number): [number, number] => [SIZE * SQ3 * (q + r / 2), -SIZE * 1.5 * r];
-const corner = (c: [number, number], i: number): [number, number] => {
+
+/**
+ * A hex grid: cell size in degrees of latitude, an origin, and how much to stretch longitude so
+ * cells stay regular away from the equator. The illustrative state uses the default, at (0°, 0°);
+ * real districts each get a small grid of their own.
+ */
+export interface Grid { size: number; origin: [number, number]; lonScale: number }
+const ILLUSTRATIVE: Grid = { size: 0.022, origin: [0, 0], lonScale: 1 };
+export const gridAt = (size: number, origin: [number, number]): Grid =>
+  ({ size, origin, lonScale: 1 / Math.cos((origin[1] * Math.PI) / 180) });
+
+const center = (q: number, r: number, g: Grid = ILLUSTRATIVE): [number, number] =>
+  [g.origin[0] + g.size * g.lonScale * SQ3 * (q + r / 2), g.origin[1] - g.size * 1.5 * r];
+const corner = (c: [number, number], i: number, g: Grid = ILLUSTRATIVE): [number, number] => {
   const a = (Math.PI / 180) * (60 * i - 30);
-  return [Math.round((c[0] + SIZE * Math.cos(a)) * 1e6) / 1e6, Math.round((c[1] + SIZE * Math.sin(a)) * 1e6) / 1e6];
+  return [Math.round((c[0] + g.size * g.lonScale * Math.cos(a)) * 1e6) / 1e6, Math.round((c[1] + g.size * Math.sin(a)) * 1e6) / 1e6];
 };
+const SIZE = ILLUSTRATIVE.size;
 
 function bboxOf(points: [number, number][]): [number, number, number, number] {
   let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
@@ -48,13 +60,13 @@ function bboxOf(points: [number, number][]): [number, number, number, number] {
 }
 
 /** Union boundary of a set of hexes: keep edges used once, then chain them into rings. */
-function rings(hexes: string[]): Ring[] {
+function rings(hexes: string[], g: Grid = ILLUSTRATIVE): Ring[] {
   const edgeCount = new Map<string, { a: string; b: string; n: number }>();
   const pt = new Map<string, [number, number]>();
   for (const hk of hexes) {
     const [q, r] = hk.split(',').map(Number);
-    const c = center(q, r);
-    const cs = [0, 1, 2, 3, 4, 5].map((i) => corner(c, i));
+    const c = center(q, r, g);
+    const cs = [0, 1, 2, 3, 4, 5].map((i) => corner(c, i, g));
     for (let i = 0; i < 6; i++) {
       const p1 = cs[i], p2 = cs[(i + 1) % 6];
       const k1 = `${p1[0]},${p1[1]}`, k2 = `${p2[0]},${p2[1]}`;
@@ -99,10 +111,10 @@ function rings(hexes: string[]): Ring[] {
 }
 
 /** Assign each hex in `pool` to one of `n` regions, sized roughly by `weights`. */
-function partition(pool: string[], ids: string[], weights: number[], salt: string): Map<string, string[]> {
+function partition(pool: string[], ids: string[], weights: number[], salt: string, g: Grid = ILLUSTRATIVE): Map<string, string[]> {
   const out = new Map<string, string[]>(ids.map((id) => [id, []]));
   if (ids.length === 1) { out.set(ids[0], [...pool]); return out; }
-  const pts = pool.map((k) => { const [q, r] = k.split(',').map(Number); return { k, c: center(q, r) }; });
+  const pts = pool.map((k) => { const [q, r] = k.split(',').map(Number); return { k, c: center(q, r, g) }; });
   // Farthest-point seeds, starting from a deterministic hex.
   const seeds: [number, number][] = [pts[Math.floor(h(salt, 'start') * pts.length)].c];
   while (seeds.length < ids.length) {
@@ -242,9 +254,9 @@ export function generateGeography(input: GenInput): GenOutput {
 }
 
 /** Union of several units' hexes (for city areas made of clusters). */
-export function unionUnit(id: string, hexes: string[]): GenUnit {
-  const rs = rings(hexes);
-  const cs = hexes.map((k) => { const [q, r] = k.split(',').map(Number); return center(q, r); });
+export function unionUnit(id: string, hexes: string[], g: Grid = ILLUSTRATIVE): GenUnit {
+  const rs = rings(hexes, g);
+  const cs = hexes.map((k) => { const [q, r] = k.split(',').map(Number); return center(q, r, g); });
   const cx = cs.reduce((a, c) => a + c[0], 0) / cs.length;
   const cy = cs.reduce((a, c) => a + c[1], 0) / cs.length;
   return { id, rings: rs, centroid: [cx, cy], bbox: bboxOf(rs.flat()) };
@@ -270,4 +282,162 @@ export function toMultiPolygon(rs: Ring[]): { type: 'MultiPolygon'; coordinates:
     if (host && polys.length) host.push(r); else polys.push([r]);
   }
   return { type: 'MultiPolygon', coordinates: polys };
+}
+
+// ---------------------------------------------------------------- inside real boundaries
+export type Geometry = { type: 'Polygon'; coordinates: Ring[] } | { type: 'MultiPolygon'; coordinates: Ring[][] };
+
+const outerRings = (g: Geometry): Ring[] => (g.type === 'Polygon' ? [g.coordinates[0]] : g.coordinates.map((p) => p[0]));
+
+function insideRing(pt: [number, number], r: Ring): boolean {
+  let c = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [xi, yi] = r[i], [xj, yj] = r[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+}
+export const insideGeometry = (pt: [number, number], g: Geometry): boolean => outerRings(g).some((r) => insideRing(pt, r));
+
+/** A circle of `km` around a point, as a closed ring (for an approximate city area). */
+export function circleRing(c: [number, number], km: number, n = 64): Ring {
+  const dLat = km / 111.32, dLon = dLat / Math.cos((c[1] * Math.PI) / 180);
+  const out: Ring = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (2 * Math.PI * i) / n;
+    out.push([Math.round((c[0] + dLon * Math.cos(a)) * 1e6) / 1e6, Math.round((c[1] + dLat * Math.sin(a)) * 1e6) / 1e6]);
+  }
+  return out;
+}
+
+export interface RealInput extends GenInput {
+  /** Each demo district's real outline. */
+  outlines: Map<string, Geometry>;
+  /** Cell size in degrees of latitude; about 0.005 (≈ 550 m) gives smooth block lines. */
+  cell?: number;
+  /**
+   * Real school positions (UDISE+, moved a few hundred metres). When a district's schools have
+   * them, each cell goes to the cluster of its nearest school, so blocks and clusters are drawn
+   * around where the schools really are, and each school is pinned at its own position.
+   */
+  points?: Map<string, [number, number]>;
+}
+
+/**
+ * Blocks, clusters and school points for demo districts placed inside real district outlines.
+ *
+ * Each district's outline is filled with small hex cells, which are then divided among its
+ * blocks and clusters exactly as the illustrative generator does, weighted by school counts.
+ * The district keeps its real outline; the lines inside it are simulated, as is the data, and
+ * are tagged that way. Deterministic: same input, same shapes.
+ */
+export function generateInsideReal(input: RealInput): Omit<GenOutput, 'state'> & { grids: Map<string, Grid> } {
+  const cell = input.cell ?? 0.005;
+  const hexOf = new Map<string, string[]>();
+  const grids = new Map<string, Grid>();
+  const units = new Map<string, GenUnit>();
+  const schoolPoints = new Map<string, [number, number]>();
+
+  for (const d of input.districts) {
+    const outline = input.outlines.get(d.id);
+    if (!outline) continue;
+    const all = outerRings(outline).flat();
+    const [x0, y0, x1, y1] = bboxOf(all);
+    const g = gridAt(cell, [x0, y1]);
+    grids.set(d.id, g);
+    // Every cell whose centre lies inside the real outline.
+    const pool: string[] = [];
+    const rMax = Math.ceil((y1 - y0) / (cell * 1.5)) + 1;
+    for (let r = -1; r <= rMax; r++) {
+      const qMin = Math.floor(-r / 2) - 2, qMax = Math.ceil((x1 - x0) / (cell * g.lonScale * SQ3)) - Math.floor(r / 2) + 2;
+      for (let q = qMin; q <= qMax; q++) {
+        const c = center(q, r, g);
+        if (c[0] >= x0 && c[0] <= x1 && c[1] >= y0 && c[1] <= y1 && insideGeometry(c, outline)) pool.push(key(q, r));
+      }
+    }
+    hexOf.set(d.id, pool);
+    const bs = input.blocks.filter((b) => b.district_id === d.id);
+    const blockIds = new Set(bs.map((b) => b.id));
+    const placed = input.schools
+      .filter((s) => input.points?.has(s.id) && input.clusters.some((c) => c.id === s.cluster_id && blockIds.has(c.block_id)))
+      .map((s) => ({ cluster: s.cluster_id, p: input.points!.get(s.id)! }));
+    if (placed.length) {
+      // Real positions: every cell joins the cluster of its nearest school (a Voronoi split on the grid).
+      const near = (c: [number, number]) => {
+        let best = placed[0], bd = Infinity;
+        for (const x of placed) {
+          const dx = (x.p[0] - c[0]) / g.lonScale, dy = x.p[1] - c[1];
+          const dd = dx * dx + dy * dy;
+          if (dd < bd) { bd = dd; best = x; }
+        }
+        return best.cluster;
+      };
+      const byCluster = new Map<string, string[]>();
+      for (const k of pool) {
+        const [q, r] = k.split(',').map(Number);
+        const cid = near(center(q, r, g));
+        byCluster.set(cid, [...(byCluster.get(cid) ?? []), k]);
+      }
+      // A cluster whose schools all sit next to another cluster's still gets the cell nearest its first school.
+      for (const x of placed) {
+        if (byCluster.get(x.cluster)?.length) continue;
+        let bk = pool[0], bd = Infinity;
+        for (const k of pool) {
+          const [q, r] = k.split(',').map(Number); const c = center(q, r, g);
+          const dd = ((c[0] - x.p[0]) / g.lonScale) ** 2 + (c[1] - x.p[1]) ** 2;
+          if (dd < bd) { bd = dd; bk = k; }
+        }
+        for (const [cid, ks] of byCluster) { const i = ks.indexOf(bk); if (i >= 0) { ks.splice(i, 1); byCluster.set(cid, ks); } }
+        byCluster.set(x.cluster, [bk]);
+      }
+      for (const b of bs) {
+        const cs = input.clusters.filter((c) => c.block_id === b.id);
+        hexOf.set(b.id, cs.flatMap((c) => byCluster.get(c.id) ?? []));
+        for (const c of cs) hexOf.set(c.id, byCluster.get(c.id) ?? []);
+      }
+    } else {
+      const bParts = partition(pool, bs.map((b) => b.id), bs.map((b) => Math.max(1, b.schools)), d.id, g);
+      for (const [bid, bh] of bParts) {
+        hexOf.set(bid, bh);
+        const cs = input.clusters.filter((c) => c.block_id === bid);
+        const cParts = partition(bh, cs.map((c) => c.id), cs.map((c) => Math.max(1, c.schools)), bid, g);
+        for (const [cid, ch] of cParts) hexOf.set(cid, ch);
+      }
+    }
+
+    const unitOf = (id: string, hexes: string[]): GenUnit => {
+      const cs = hexes.map((k) => { const [q, r] = k.split(',').map(Number); return center(q, r, g); });
+      const cx = cs.reduce((a, c) => a + c[0], 0) / cs.length;
+      const cy = cs.reduce((a, c) => a + c[1], 0) / cs.length;
+      const near = cs.reduce((b, c) => ((c[0] - cx) ** 2 + (c[1] - cy) ** 2 < (b[0] - cx) ** 2 + (b[1] - cy) ** 2 ? c : b), cs[0]);
+      // The district itself is drawn with its real outline; everything inside with its cells.
+      const rs = id === d.id ? outerRings(outline) : rings(hexes, g);
+      return { id, rings: rs, centroid: [Math.round(near[0] * 1e6) / 1e6, Math.round(near[1] * 1e6) / 1e6], bbox: bboxOf(rs.flat()) };
+    };
+    for (const id of [d.id, ...bs.map((b) => b.id), ...input.clusters.filter((c) => bs.some((b) => b.id === c.block_id)).map((c) => c.id)]) {
+      const hexes = hexOf.get(id);
+      if (hexes?.length) units.set(id, unitOf(id, hexes));
+    }
+
+    const clusterIds = new Set(input.clusters.filter((c) => bs.some((b) => b.id === c.block_id)).map((c) => c.id));
+    const byCluster = new Map<string, string[]>();
+    for (const s of input.schools) if (clusterIds.has(s.cluster_id)) byCluster.set(s.cluster_id, [...(byCluster.get(s.cluster_id) ?? []), s.id]);
+    for (const [cid, sids] of byCluster) {
+      const hexes = hexOf.get(cid) ?? [];
+      sids.forEach((sid, i) => {
+        const real = input.points?.get(sid);
+        if (real) { schoolPoints.set(sid, real); return; }
+        // Spread a cluster's schools over its cells rather than stacking them in the first few.
+        const hk = hexes[Math.floor(((i + h(sid, 'pick')) / sids.length) * hexes.length) % Math.max(1, hexes.length)];
+        if (!hk) return;
+        const [q, r] = hk.split(',').map(Number);
+        const c = center(q, r, g);
+        const a = h(sid, 'a') * Math.PI * 2, dd = cell * 0.55 * Math.sqrt(h(sid, 'd'));
+        const nudged: [number, number] = [Math.round((c[0] + dd * g.lonScale * Math.cos(a)) * 1e6) / 1e6, Math.round((c[1] + dd * Math.sin(a)) * 1e6) / 1e6];
+        // Near the district edge a nudge can cross the real boundary; the cell centre never does.
+        schoolPoints.set(sid, insideGeometry(nudged, outline) ? nudged : [Math.round(c[0] * 1e6) / 1e6, Math.round(c[1] * 1e6) / 1e6]);
+      });
+    }
+  }
+  return { units, schoolPoints, hexOf, grids };
 }

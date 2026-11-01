@@ -4,10 +4,15 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
+import { ASK_CLAUDE_EVENT } from './ask-claude';
 import { SourceChip } from './AiBriefing';
+import { Sheet, SheetClose, SheetContent, SheetTrigger } from './primitives/sheet';
+import { MicButton, SpeakButton } from './voice';
+import { appendDictation, speakable } from '@/lib/voice-text';
+import { FeedbackThumbs } from './Feedback';
 
 /**
- * Karyavahi AI conversation UI. Streams from /api/ai/chat, shows which tools ran, renders
+ * The Claude conversation UI. Streams from /api/ai/chat, shows which tools ran, renders
  * citations as links, and keeps the conversation in sessionStorage so the full page and the
  * drawer share it. Starter questions are optional — any question can be typed.
  */
@@ -19,10 +24,14 @@ interface Msg {
   tools?: ToolStep[];
   sources?: string[];
   unverified?: string[];
+  /** Figures in the answer that none of the retrieved records contain (the auditor pass). */
+  unchecked?: string[];
   followUps?: string[];
   error?: { message: string; retryable: boolean };
   model?: string;
   streaming?: boolean;
+  /** The AI log row of this answer, from the done event; feedback points at it. */
+  interactionId?: string;
 }
 export interface ChatContext { path?: string; caseId?: string; area?: { level: string; id: string }; reportId?: string; label?: string }
 
@@ -39,7 +48,7 @@ function inline(text: string, keyBase: string): ReactNode[] {
     const tok = m[0];
     const k = `${keyBase}-${i++}`;
     if (tok.startsWith('**')) out.push(<strong key={k} className="font-semibold text-ink">{tok.slice(2, -2)}</strong>);
-    else if (tok.startsWith('`')) out.push(<code key={k} className="rounded bg-paper-deep px-1 font-mono text-[12px]">{tok.slice(1, -1)}</code>);
+    else if (tok.startsWith('`')) out.push(<code key={k} className="rounded bg-paper-deep px-1 font-mono text-xs">{tok.slice(1, -1)}</code>);
     else if (tok.startsWith('[')) out.push(<span key={k} className="inline-flex flex-wrap gap-1 align-baseline">{tok.slice(1, -1).split(/,\s*/).map((id) => (ID_RE.test(id) ? <SourceChip key={id} id={id} /> : <span key={id}>{id}</span>))}</span>);
     else out.push(<SourceChip key={k} id={tok} />);
     last = m.index + tok.length;
@@ -61,7 +70,7 @@ export function Markdown({ text }: { text: string }) {
       while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(lines[i].trim().slice(1, -1).split('|').map((c) => c.trim())); i++; }
       blocks.push(
         <div key={`t${i}`} className="my-2 overflow-x-auto rounded-lg border border-line">
-          <table className="table text-[12.5px]"><thead><tr>{head.map((h, j) => <th key={j}>{inline(h, `th${i}${j}`)}</th>)}</tr></thead>
+          <table className="table text-sm"><thead><tr>{head.map((h, j) => <th key={j}>{inline(h, `th${i}${j}`)}</th>)}</tr></thead>
             <tbody>{rows.map((r, ri) => <tr key={ri}>{r.map((c, ci) => <td key={ci}>{inline(c, `td${i}${ri}${ci}`)}</td>)}</tr>)}</tbody></table>
         </div>,
       );
@@ -80,7 +89,7 @@ export function Markdown({ text }: { text: string }) {
       continue;
     }
     const h = line.match(/^(#{1,4})\s+(.*)$/);
-    if (h) { blocks.push(<p key={`h${i}`} className="mb-1 mt-3 text-[14px] font-semibold text-ink first:mt-0">{inline(h[2], `h${i}`)}</p>); i++; continue; }
+    if (h) { blocks.push(<p key={`h${i}`} className="mb-1 mt-3 text-base font-semibold text-ink first:mt-0">{inline(h[2], `h${i}`)}</p>); i++; continue; }
     if (line.trim() === '') { i++; continue; }
     const para: string[] = [];
     while (i < lines.length && lines[i].trim() !== '' && !/^\s*([-*•]|\d+[.)])\s+/.test(lines[i]) && !/^#{1,4}\s/.test(lines[i]) && !/^\s*\|/.test(lines[i])) { para.push(lines[i]); i++; }
@@ -109,8 +118,10 @@ function loadStore(user?: string): Store {
 }
 
 // ---------------------------------------------------------------- the panel
-export function ChatPanel({ context, starters, compact = false, configured = true, userKey, withHistory = false, scopeLabel }: {
+export function ChatPanel({ context, starters, compact = false, configured = true, userKey, withHistory = false, scopeLabel, ask }: {
   context?: ChatContext; starters: string[]; compact?: boolean; configured?: boolean; userKey?: string; withHistory?: boolean; scopeLabel?: string;
+  /** A question asked from elsewhere on the page (askClaude); sent once per new `n`. */
+  ask?: { q: string; n: number };
 }) {
   const [store, setStore] = useState<Store | null>(null);
   const [input, setInput] = useState('');
@@ -169,6 +180,7 @@ export function ChatPanel({ context, starters, compact = false, configured = tru
 
   const patchLast = (fn: (m: Msg) => Msg) => setMsgs((xs) => (xs.length ? [...xs.slice(0, -1), fn(xs[xs.length - 1])] : xs));
 
+  const askedRef = useRef(0);
   const send = useCallback(async (question: string, base?: Msg[]) => {
     const q = question.trim();
     if (!q || busy) return;
@@ -206,7 +218,7 @@ export function ChatPanel({ context, starters, compact = false, configured = tru
           else if (e.type === 'text') patchLast((m) => ({ ...m, content: m.content + e.delta }));
           else if (e.type === 'tool_start') patchLast((m) => ({ ...m, tools: [...(m.tools ?? []), { id: e.id, label: e.label, status: 'running' }] }));
           else if (e.type === 'tool_end') patchLast((m) => ({ ...m, tools: (m.tools ?? []).map((t) => (t.id === e.id ? { ...t, status: e.ok ? 'done' : 'failed', records: e.records } : t)) }));
-          else if (e.type === 'done') patchLast((m) => ({ ...m, streaming: false, sources: e.sources, unverified: e.citedNotRetrieved, followUps: e.followUps }));
+          else if (e.type === 'done') patchLast((m) => ({ ...m, streaming: false, sources: e.sources, unverified: e.citedNotRetrieved, unchecked: e.unsupportedFigures ?? [], followUps: e.followUps, interactionId: e.interactionId }));
           else if (e.type === 'error') patchLast((m) => ({ ...m, streaming: false, error: { message: e.message, retryable: e.retryable } }));
         }
       }
@@ -236,28 +248,34 @@ export function ChatPanel({ context, starters, compact = false, configured = tru
   const history = withHistory ? (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-line pr-3 md:flex" aria-label="Conversation history">
       <button type="button" onClick={startNew} className="btn-quiet btn-sm mb-3 w-full justify-center"><Icon name="plus" size={14} />New conversation</button>
-      <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">This session</p>
+      <p className="mb-1 px-2 text-2xs font-semibold uppercase tracking-[0.08em] text-ink-faint">This session</p>
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
         {sorted.map((c) => (
           <li key={c.id} className="group relative">
             <button type="button" onClick={() => switchTo(c.id)} aria-current={c.id === active?.id ? 'true' : undefined}
               className={`block w-full rounded-lg px-2 py-1.5 pr-7 text-left ${c.id === active?.id ? 'bg-brand-light/70 text-ink' : 'text-ink-soft hover:bg-paper-sunk hover:text-ink'}`}>
-              <span className="block truncate text-[13px]">{c.title}</span>
-              <span className="block text-[11px] text-ink-faint">{c.msgs.filter((m) => m.role === 'user').length} question{c.msgs.filter((m) => m.role === 'user').length === 1 ? '' : 's'} · {new Date(c.updated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+              <span className="block truncate text-sm">{c.title}</span>
+              <span className="block text-2xs text-ink-faint">{c.msgs.filter((m) => m.role === 'user').length} question{c.msgs.filter((m) => m.role === 'user').length === 1 ? '' : 's'} · {new Date(c.updated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
             </button>
             <button type="button" onClick={() => remove(c.id)} aria-label={`Delete conversation ${c.title}`} className="absolute right-1 top-1.5 hidden rounded p-1 text-ink-faint hover:bg-white hover:text-crit group-hover:block"><Icon name="x" size={13} /></button>
           </li>
         ))}
       </ul>
-      <p className="mt-3 px-2 text-[11px] leading-snug text-ink-faint">Kept only for this browser session, and only for you.</p>
+      <p className="mt-3 px-2 text-2xs leading-snug text-ink-faint">Kept only for this browser session, and only for you.</p>
     </aside>
   ) : null;
+
+  useEffect(() => {
+    if (!ask || !store || !configured || ask.n === askedRef.current) return;
+    askedRef.current = ask.n;
+    void send(ask.q);
+  }, [ask, store, configured, send]);
 
   return (
     <div className={`flex min-h-0 gap-4 ${compact ? 'h-full' : 'h-[calc(100vh-280px)] min-h-[480px]'}`}>
     {history}
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-paper-sunk/60 px-3 py-2 text-[12px] text-ink-soft">
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-paper-sunk/60 px-3 py-2 text-xs text-ink-soft">
         <Icon name="target" size={13} className="text-brand" />
         <span>Context: <span className="font-medium text-ink">{context?.label ?? 'All records in your scope'}</span></span>
         {scopeLabel ? <span className="text-ink-faint">· scope {scopeLabel}</span> : null}
@@ -268,16 +286,16 @@ export function ChatPanel({ context, starters, compact = false, configured = tru
           <div className="mx-auto max-w-2xl pt-6 text-center">
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-brand-light text-brand"><Icon name="sparkles" size={24} /></span>
             <p className="mt-4 font-display text-xl font-semibold text-ink">Ask anything about your cases, schools and outcomes</p>
-            <p className="mx-auto mt-1.5 max-w-lg text-[13.5px] leading-relaxed text-ink-soft">
+            <p className="mx-auto mt-1.5 max-w-lg text-sm leading-relaxed text-ink-soft">
               Answers are built from records you are allowed to see, with the record ids cited. The assistant advises — it cannot approve, assign or close anything.
             </p>
             {!configured ? (
-              <p className="mx-auto mt-4 max-w-md rounded-lg border border-warn/30 bg-warn-light px-3 py-2 text-[13px] text-warn">AI is not connected: no model API key is configured on the server.</p>
+              <p className="mx-auto mt-4 max-w-md rounded-lg border border-warn/30 bg-warn-light px-3 py-2 text-sm text-warn">AI is not connected: no model API key is configured on the server.</p>
             ) : null}
             <div className={`mx-auto mt-6 grid gap-2 text-left ${compact ? '' : 'sm:grid-cols-2'}`}>
               {starters.map((q) => (
                 <button key={q} type="button" onClick={() => send(q)} disabled={!configured}
-                  className="rounded-xl border border-line bg-white px-3.5 py-2.5 text-[13.5px] text-ink-soft shadow-card transition-colors hover:border-brand/40 hover:text-ink disabled:opacity-50">
+                  className="rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink-soft shadow-card transition-colors hover:border-brand/40 hover:text-ink disabled:opacity-50">
                   {q}
                 </button>
               ))}
@@ -289,7 +307,7 @@ export function ChatPanel({ context, starters, compact = false, configured = tru
               <Fragment key={i}>
                 {m.role === 'user' ? (
                   <div className="flex justify-end">
-                    <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-navy px-4 py-2.5 text-[14px] leading-relaxed text-white">{m.content}</div>
+                    <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-navy px-4 py-2.5 text-base leading-relaxed text-white">{m.content}</div>
                   </div>
                 ) : (
                   <div className="flex gap-3">
@@ -298,7 +316,7 @@ export function ChatPanel({ context, starters, compact = false, configured = tru
                       {m.tools && m.tools.length > 0 ? (
                         <ul className="mb-2 flex flex-wrap gap-1.5">
                           {m.tools.map((t) => (
-                            <li key={t.id} className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11.5px] ${t.status === 'failed' ? 'border-crit/30 bg-crit-light text-crit' : 'border-line bg-paper-sunk text-ink-soft'}`}>
+                            <li key={t.id} className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${t.status === 'failed' ? 'border-crit/30 bg-crit-light text-crit' : 'border-line bg-paper-sunk text-ink-soft'}`}>
                               {t.status === 'running' ? <span className="h-2.5 w-2.5 animate-spin rounded-full border-[1.5px] border-brand border-t-transparent" /> : <Icon name={t.status === 'done' ? 'check' : 'alert'} size={12} />}
                               {t.label}{t.status === 'done' && t.records ? ` · ${t.records}` : ''}
                             </li>
@@ -306,12 +324,12 @@ export function ChatPanel({ context, starters, compact = false, configured = tru
                         </ul>
                       ) : null}
                       {m.content ? (
-                        <div className="text-[14px] leading-relaxed text-ink-soft"><Markdown text={m.content} />{m.streaming ? <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-brand align-middle" /> : null}</div>
+                        <div className="text-base leading-relaxed text-ink-soft"><Markdown text={m.content} />{m.streaming ? <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-brand align-middle" /> : null}</div>
                       ) : m.streaming && !(m.tools?.length) ? (
-                        <p className="flex items-center gap-2 text-[13px] text-ink-faint"><span className="flex gap-1"><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-faint" /><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-faint [animation-delay:120ms]" /><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-faint [animation-delay:240ms]" /></span>Thinking…</p>
+                        <p className="flex items-center gap-2 text-sm text-ink-faint"><span className="flex gap-1"><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-faint" /><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-faint [animation-delay:120ms]" /><span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-faint [animation-delay:240ms]" /></span>Thinking…</p>
                       ) : null}
                       {m.error ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-crit/30 bg-crit-light px-3 py-2 text-[13px] text-crit" role="alert">
+                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-crit/30 bg-crit-light px-3 py-2 text-sm text-crit" role="alert">
                           <Icon name="alert" size={15} />{m.error.message}
                           {m.error.retryable && i === msgs.length - 1 ? <button type="button" onClick={retry} className="btn-quiet btn-sm ml-auto">Retry</button> : null}
                         </div>
@@ -319,24 +337,29 @@ export function ChatPanel({ context, starters, compact = false, configured = tru
                       {!m.streaming && !m.error && m.content ? (
                         <div className="mt-2.5 space-y-2">
                           {m.sources && m.sources.length > 0 ? (
-                            <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-ink-faint">
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-faint">
                               <span className="font-medium">Sources:</span>{m.sources.slice(0, 14).map((id) => <SourceChip key={id} id={id} />)}
                             </div>
                           ) : (
-                            <p className="text-[11.5px] text-ink-faint">No record ids were cited in this answer.</p>
+                            <p className="text-xs text-ink-faint">No record ids were cited in this answer.</p>
                           )}
+                          {m.unchecked && m.unchecked.length > 0 ? (
+                            <p className="flex items-center gap-1.5 text-xs text-warn"><Icon name="alert" size={13} />Figures not found in the records Claude read — check before relying on: {m.unchecked.join(', ')}</p>
+                          ) : null}
                           {m.unverified && m.unverified.length > 0 ? (
-                            <p className="flex items-center gap-1.5 text-[11.5px] text-warn"><Icon name="alert" size={13} />Mentioned but not retrieved in this answer — check before relying on: {m.unverified.join(', ')}</p>
+                            <p className="flex items-center gap-1.5 text-xs text-warn"><Icon name="alert" size={13} />Mentioned but not retrieved in this answer — check before relying on: {m.unverified.join(', ')}</p>
                           ) : null}
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <button type="button" onClick={() => copy(i)} className="btn-ghost btn-sm px-2 text-[12px]"><Icon name={copied === i ? 'check' : 'copy'} size={13} />{copied === i ? 'Copied' : 'Copy'}</button>
-                            {i === msgs.length - 1 ? <button type="button" onClick={retry} disabled={busy} className="btn-ghost btn-sm px-2 text-[12px]"><Icon name="refresh" size={13} />Retry</button> : null}
-                            {m.model ? <span className="text-[11px] text-ink-faint">{m.model} · AI-generated, verify before acting</span> : null}
+                            <button type="button" onClick={() => copy(i)} className="btn-ghost btn-sm px-2 text-xs"><Icon name={copied === i ? 'check' : 'copy'} size={13} />{copied === i ? 'Copied' : 'Copy'}</button>
+                            {i === msgs.length - 1 ? <button type="button" onClick={retry} disabled={busy} className="btn-ghost btn-sm px-2 text-xs"><Icon name="refresh" size={13} />Retry</button> : null}
+                            <SpeakButton text={speakable(m.content)} size="sm" />
+                            {m.model ? <span className="text-2xs text-ink-faint">{m.model} · AI-generated, verify before acting</span> : null}
                           </div>
+                          {m.interactionId ? <FeedbackThumbs kind="claude_answer" target={m.interactionId} /> : null}
                           {i === msgs.length - 1 && m.followUps && m.followUps.length > 0 ? (
                             <div className="flex flex-wrap gap-1.5 pt-1">
                               {m.followUps.map((f) => (
-                                <button key={f} type="button" onClick={() => send(f)} className="rounded-full border border-brand/25 bg-white px-3 py-1 text-[12.5px] text-brand hover:bg-brand-light">{f}</button>
+                                <button key={f} type="button" onClick={() => send(f)} className="rounded-full border border-brand/25 bg-white px-3 py-1 text-sm text-brand hover:bg-brand-light">{f}</button>
                               ))}
                             </div>
                           ) : null}
@@ -359,16 +382,17 @@ export function ChatPanel({ context, starters, compact = false, configured = tru
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input); } }}
             placeholder={configured ? 'Ask a question… (Enter to send, Shift+Enter for a new line)' : 'AI is not connected'}
             disabled={!configured}
-            aria-label="Ask Karyavahi AI"
-            className="max-h-40 min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2 text-[14px] text-ink placeholder:text-ink-faint focus:outline-none"
+            aria-label="Ask Claude"
+            className="max-h-40 min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2 text-base text-ink placeholder:text-ink-faint focus:outline-none"
           />
+          <MicButton onText={(t) => setInput((v) => appendDictation(v, t))} disabled={!configured || busy} />
           {busy ? (
             <button type="button" onClick={() => abortRef.current?.abort()} className="btn-quiet h-10 px-3" aria-label="Stop generating"><Icon name="stop" size={15} />Stop</button>
           ) : (
             <button type="submit" disabled={!input.trim() || !configured} className="btn-primary h-10 px-3" aria-label="Send"><Icon name="send" size={16} /></button>
           )}
         </div>
-        <div className="mt-1.5 flex items-center justify-between text-[11px] text-ink-faint">
+        <div className="mt-1.5 flex items-center justify-between text-2xs text-ink-faint">
           <span>Scoped to your records · fictional demo data</span>
           {msgs.length > 0 ? <button type="button" onClick={() => { abortRef.current?.abort(); setMsgs([]); }} className="hover:text-ink">Clear conversation</button> : null}
         </div>
@@ -405,45 +429,47 @@ const STARTERS_FOR = (ctx: ChatContext): string[] =>
   : ctx.reportId ? ['Summarise this report', 'What decisions does this report call for?']
   : ['What should I prioritise this week?', 'Which cases need my approval?', 'Why are tasks overdue, and what is blocking them?', 'Prepare an agenda for tomorrow’s review meeting'];
 
-export function AssistantDrawer({ configured, userKey }: { configured: boolean; userKey?: string }) {
+export function AssistantDrawer({ configured, userKey, label = 'Ask Claude', hint = 'Ask Claude about this page' }: { configured: boolean; userKey?: string; label?: string; hint?: string }) {
   const [open, setOpen] = useState(false);
+  const [ask, setAsk] = useState<{ q: string; n: number } | undefined>();
   const path = usePathname();
   const ctx = useChatContext();
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open]);
-  if (path.startsWith('/assistant')) return <Link href="/assistant" className="btn-ghost gap-1.5 px-2.5 text-brand"><Icon name="sparkles" size={17} /><span className="hidden text-[13px] font-medium xl:inline">Ask AI</span></Link>;
+    const onAsk = (e: Event) => {
+      const q = (e as CustomEvent<string>).detail;
+      if (typeof q !== 'string' || !q.trim()) return;
+      setOpen(true);
+      setAsk((prev) => ({ q, n: (prev?.n ?? 0) + 1 }));
+    };
+    window.addEventListener(ASK_CLAUDE_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_CLAUDE_EVENT, onAsk);
+  }, []);
+  if (path.startsWith('/assistant')) return <Link href="/assistant" className="btn-ghost gap-1.5 px-2.5 text-brand"><Icon name="sparkles" size={17} /><span className="hidden text-sm font-medium xl:inline">{label}</span></Link>;
 
   return (
-    <>
-      <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open}
-        className="btn-ghost gap-1.5 px-2.5 text-brand no-print" title="Ask Karyavahi AI about this page">
-        <Icon name="sparkles" size={17} />
-        <span className="hidden text-[13px] font-medium xl:inline">Ask AI</span>
-      </button>
-      {open ? (
-        <div className="fixed inset-0 z-50 no-print" role="dialog" aria-modal="true" aria-label="Karyavahi AI">
-          <button type="button" aria-label="Close assistant" className="absolute inset-0 bg-navy-950/30" onClick={() => setOpen(false)} />
-          <div className="absolute inset-y-0 right-0 flex w-full max-w-[520px] animate-fade-in flex-col bg-ivory shadow-pop">
-            <header className="flex items-center justify-between border-b border-line bg-white px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-white"><Icon name="sparkles" size={16} /></span>
-                <div><p className="text-[14.5px] font-semibold text-ink">Karyavahi AI</p><p className="text-[11.5px] text-ink-faint">Grounded in your records</p></div>
-              </div>
-              <div className="flex items-center gap-1">
-                <Link href="/assistant" className="btn-ghost btn-sm" title="Open full page"><Icon name="arrow-up-right" size={15} /></Link>
-                <button type="button" onClick={() => setOpen(false)} className="btn-ghost btn-sm" aria-label="Close"><Icon name="x" size={17} /></button>
-              </div>
-            </header>
-            <div className="min-h-0 flex-1 px-4 pb-3 pt-3">
-              <ChatPanel compact context={ctx} starters={STARTERS_FOR(ctx)} configured={configured} userKey={userKey} />
-            </div>
+    // Closing forgets the asked question, so reopening the drawer does not ask it again.
+    <Sheet open={open} onOpenChange={(o) => { setOpen(o); if (!o) setAsk(undefined); }}>
+      <SheetTrigger asChild>
+        <button type="button" className="btn-ghost gap-1.5 px-2.5 text-brand no-print" title={hint}>
+          <Icon name="sparkles" size={17} />
+          <span className="hidden text-sm font-medium xl:inline">{label}</span>
+        </button>
+      </SheetTrigger>
+      <SheetContent side="right" label="Claude" className="w-full max-w-[520px] bg-ivory">
+        <header className="flex items-center justify-between border-b border-line bg-white px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-white"><Icon name="sparkles" size={16} /></span>
+            <div><p className="text-base font-semibold text-ink">Claude</p><p className="text-xs text-ink-faint">Reads only the records you can see</p></div>
           </div>
+          <div className="flex items-center gap-1">
+            <Link href="/assistant" className="btn-ghost btn-sm" title="Open full page"><Icon name="arrow-up-right" size={15} /></Link>
+            <SheetClose className="btn-ghost btn-sm" aria-label="Close"><Icon name="x" size={17} /></SheetClose>
+          </div>
+        </header>
+        <div className="min-h-0 flex-1 px-4 pb-3 pt-3">
+          <ChatPanel compact context={ctx} starters={STARTERS_FOR(ctx)} configured={configured} userKey={userKey} ask={ask} />
         </div>
-      ) : null}
-    </>
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -1,6 +1,7 @@
 import 'server-only';
 import { randomInt } from 'node:crypto';
-import { all, one, run, tx } from './db';
+import { all, one, run, tx, nextIdFor } from './db';
+import { isDemoAddress, DEMO_EMAIL_DOMAIN } from './sign-in';
 import { loadSession, type Session } from './session';
 import { nowIso } from './clock';
 import { appendAudit, notify } from './write';
@@ -45,8 +46,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const AFFIL_RE = /^EMP-[A-Z]{2,8}-\d{3,6}$/;
 
 function nextRegId(): string {
-  const max = one<{ m: string | null }>(`select max(id) m from registration_requests`)?.m;
-  return `REG-${String((max ? Number(max.slice(4)) : 0) + 1).padStart(4, '0')}`;
+  return nextIdFor('registration', 'registration_requests', 'REG-', 4);
 }
 
 /** The designated verifier for a requested role and scope: the authority one level up. */
@@ -67,6 +67,9 @@ export function createRegistration(input: NewRegistration): { id: string; code: 
   const scopeType = input.scopeType as ScopeType;
   if (fullName.length < 3) throw new Refused('Enter your full name.', 'input');
   if (!EMAIL_RE.test(email)) throw new Refused('Enter a valid official email address.', 'input');
+  // The demo signs in by address alone (sign-in.ts), so it accepts only fictional addresses on the
+  // reserved demo domain: an approved account can then sign in, and no real address is collected.
+  if (!isDemoAddress(email)) throw new Refused(`This demo has no passwords, so it only accepts fictional addresses ending in @${DEMO_EMAIL_DOMAIN}.`, 'input');
   if (!REQUESTABLE.includes(role)) throw new Refused('That role cannot be requested.', 'input');
   if (ROLE_LEVEL[role] !== scopeType) throw new Refused(`A ${role.replace('_', ' ')} is assigned at ${ROLE_LEVEL[role]} level.`, 'input');
   if (!pathOf(scopeType, input.scopeId)) throw new Refused('Choose a valid place for the assignment.', 'input');
@@ -196,8 +199,7 @@ export function decideRegistration(s: Session, id: string, action: 'approve' | '
   }
   if (r.duplicate_of) throw new Refused('This email already belongs to an account. Reject the duplicate, or ask the person to request a change from their existing account.', 'duplicate');
   return tx(() => {
-    const max = one<{ m: string }>(`select max(id) m from users where id like 'USR-%'`)!.m;
-    const uid = `USR-${String(Number(max.slice(4)) + 1).padStart(5, '0')}`;
+    const uid = nextIdFor('user', 'users', 'USR-', 5);
     const state = pathOf(r.scope_type, r.scope_id)?.state ?? 'STA-01';
     void state;
     run(`insert into users (id, full_name, email, preferred_language, preferred_channel, is_demo_account, status, created_at, provenance) values (?,?,?,?,?,?,?,?,?)`,

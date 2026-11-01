@@ -1,0 +1,846 @@
+{
+ "about": "Published figures used by the demo, with page references. Built by scripts/build-real-data.mjs from the files in .data/sources/ (not committed).",
+ "built": "2026-11-01",
+ "pdf_checks": 126,
+ "districts": {
+  "DST-01": {
+   "name": "Rampur",
+   "lgd_code": 176,
+   "prs_code": "IND09176",
+   "prs": {
+    "language": 73,
+    "mathematics": 67,
+    "state": {
+     "language": 68,
+     "mathematics": 64
+    },
+    "national": {
+     "language": 64,
+     "mathematics": 60
+    },
+    "participation": {
+     "schools": 34,
+     "teachers": 96,
+     "students": 799
+    },
+    "competencies": {
+     "language": [
+      {
+       "code": "C-9.7",
+       "en": "Knows and uses enough words for day-to-day interactions; guesses new words from known vocabulary",
+       "hi": "रोज़मर्रा की बातचीत के लिए पर्याप्त शब्द जानता है; नए शब्दों का अर्थ अनुमान लगाता है",
+       "district": 77,
+       "state": 72
+      },
+      {
+       "code": "C-10.5",
+       "en": "Reads short stories and understands them on their own (characters, storyline, intent)",
+       "hi": "छोटी कहानियाँ स्वयं पढ़कर समझता है (पात्र, कथानक, आशय)",
+       "district": 67,
+       "state": 65
+      },
+      {
+       "code": "C-10.7",
+       "en": "Reads and understands short news items, instructions, recipes and notices",
+       "hi": "छोटी ख़बरें, निर्देश, नुस्ख़े और सूचनाएँ पढ़कर समझता है",
+       "district": 70,
+       "state": 66
+      }
+     ],
+     "mathematics": [
+      {
+       "code": "C-8.1",
+       "en": "Sorts objects into groups and sub-groups",
+       "hi": "वस्तुओं को समूहों व उप-समूहों में छाँटता है",
+       "district": 74,
+       "state": 71
+      },
+      {
+       "code": "C-8.2",
+       "en": "Identifies and extends simple patterns",
+       "hi": "सरल पैटर्न पहचानता और आगे बढ़ाता है",
+       "district": 72,
+       "state": 68
+      },
+      {
+       "code": "C-8.4",
+       "en": "Arranges numbers up to 99 in order",
+       "hi": "99 तक की संख्याओं को क्रम में लगाता है",
+       "district": 62,
+       "state": 58
+      },
+      {
+       "code": "C-8.5",
+       "en": "Recognises and uses numerals up to 99 with place value",
+       "hi": "स्थानीय मान के साथ 99 तक के अंक पहचानता है",
+       "district": 66,
+       "state": 64
+      },
+      {
+       "code": "C-8.6",
+       "en": "Adds and subtracts 2-digit numbers fluently",
+       "hi": "दो अंकों की संख्याओं का जोड़-घटाव धाराप्रवाह करता है",
+       "district": 68,
+       "state": 64
+      },
+      {
+       "code": "C-8.7",
+       "en": "Multiplication as repeated addition, division as sharing",
+       "hi": "गुणा को बार-बार जोड़ और भाग को बराबर बाँटना समझता है",
+       "district": 65,
+       "state": 62
+      },
+      {
+       "code": "C-8.8",
+       "en": "Recognises basic shapes and relative position in space",
+       "hi": "मूल आकृतियाँ और स्थान में सापेक्ष स्थिति पहचानता है",
+       "district": 49,
+       "state": 51
+      },
+      {
+       "code": "C-8.9",
+       "en": "Simple measurement of length, weight and volume",
+       "hi": "लंबाई, भार व आयतन का सरल मापन",
+       "district": 73,
+       "state": 66
+      },
+      {
+       "code": "C-8.10",
+       "en": "Simple measurement of time",
+       "hi": "समय का सरल मापन",
+       "district": 70,
+       "state": 65
+      },
+      {
+       "code": "C-8.11",
+       "en": "Simple transactions with money up to ₹100",
+       "hi": "₹100 तक के पैसों का सरल लेन-देन",
+       "district": 59,
+       "state": 57
+      },
+      {
+       "code": "C-8.12",
+       "en": "Vocabulary for quantities, shapes, space and measurement",
+       "hi": "मात्रा, आकृति, स्थान व मापन की शब्दावली",
+       "district": 61,
+       "state": 61
+      },
+      {
+       "code": "C-8.13",
+       "en": "Formulates and solves simple problems",
+       "hi": "सरल गणितीय समस्याएँ बनाता और हल करता है",
+       "district": 62,
+       "state": 59
+      }
+     ]
+    },
+    "pages": {
+     "overall": {
+      "pdf": 15,
+      "printed": "01"
+     },
+     "competencies": {
+      "pdf": 18,
+      "printed": "04"
+     }
+    },
+    "url": "https://parakh.ncert.gov.in/media/public_files/2025-08/Report_Rampur_IND09176.pdf"
+   },
+   "aser": {
+    "govt_school_enrolment_6_14": 38.6,
+    "not_in_school_6_14": 5.5,
+    "std3_5_read_std2": 41.8,
+    "std3_5_subtraction": 48.4,
+    "std6_8_read_std2": 64.8,
+    "std6_8_division": 42.2,
+    "page": 2,
+    "verified_from_file": true
+   },
+   "nfhs": {
+    "women_10plus_schooling": {
+     "en": "Women (15–49) with 10 or more years of schooling",
+     "hi": "10 या अधिक वर्ष स्कूली शिक्षा वाली महिलाएँ (15–49)",
+     "nfhs5": 26.9,
+     "nfhs4": 20
+    },
+    "women_literate": {
+     "en": "Women (15–49) who are literate",
+     "hi": "साक्षर महिलाएँ (15–49)",
+     "nfhs5": 57,
+     "nfhs4": null
+    },
+    "under5_stunted": {
+     "en": "Children under 5 who are stunted",
+     "hi": "ठिगनेपन से ग्रस्त 5 वर्ष से छोटे बच्चे",
+     "nfhs5": 40.4,
+     "nfhs4": 46
+    },
+    "population_electricity": {
+     "en": "Population living in households with electricity",
+     "hi": "बिजली वाले घरों में रहने वाली आबादी",
+     "nfhs5": 96.2,
+     "nfhs4": 82
+    }
+   },
+   "udise": {
+    "name": "Rampur",
+    "lgd_district": 176,
+    "udise_rows": 2660,
+    "udise_rows_with_lgd_block": 1932,
+    "lgd_blocks": [
+     "Bilaspur",
+     "Chamraon",
+     "Milak",
+     "Saidnagar",
+     "Shahabad",
+     "Suar"
+    ],
+    "government_class_1_5": 828,
+    "outside_outline_or_no_position": 321,
+    "used": 711,
+    "type_mismatches": 88,
+    "mean_class3_gap": 13
+   }
+  },
+  "DST-02": {
+   "name": "Lucknow",
+   "lgd_code": 162,
+   "prs_code": "IND09162",
+   "prs": {
+    "language": 72,
+    "mathematics": 66,
+    "state": {
+     "language": 68,
+     "mathematics": 64
+    },
+    "national": {
+     "language": 64,
+     "mathematics": 60
+    },
+    "participation": {
+     "schools": 53,
+     "teachers": 136,
+     "students": 1300
+    },
+    "competencies": {
+     "language": [
+      {
+       "code": "C-9.7",
+       "en": "Knows and uses enough words for day-to-day interactions; guesses new words from known vocabulary",
+       "hi": "रोज़मर्रा की बातचीत के लिए पर्याप्त शब्द जानता है; नए शब्दों का अर्थ अनुमान लगाता है",
+       "district": 76,
+       "state": 72
+      },
+      {
+       "code": "C-10.5",
+       "en": "Reads short stories and understands them on their own (characters, storyline, intent)",
+       "hi": "छोटी कहानियाँ स्वयं पढ़कर समझता है (पात्र, कथानक, आशय)",
+       "district": 68,
+       "state": 65
+      },
+      {
+       "code": "C-10.7",
+       "en": "Reads and understands short news items, instructions, recipes and notices",
+       "hi": "छोटी ख़बरें, निर्देश, नुस्ख़े और सूचनाएँ पढ़कर समझता है",
+       "district": 70,
+       "state": 66
+      }
+     ],
+     "mathematics": [
+      {
+       "code": "C-8.1",
+       "en": "Sorts objects into groups and sub-groups",
+       "hi": "वस्तुओं को समूहों व उप-समूहों में छाँटता है",
+       "district": 75,
+       "state": 71
+      },
+      {
+       "code": "C-8.2",
+       "en": "Identifies and extends simple patterns",
+       "hi": "सरल पैटर्न पहचानता और आगे बढ़ाता है",
+       "district": 76,
+       "state": 68
+      },
+      {
+       "code": "C-8.4",
+       "en": "Arranges numbers up to 99 in order",
+       "hi": "99 तक की संख्याओं को क्रम में लगाता है",
+       "district": 62,
+       "state": 58
+      },
+      {
+       "code": "C-8.5",
+       "en": "Recognises and uses numerals up to 99 with place value",
+       "hi": "स्थानीय मान के साथ 99 तक के अंक पहचानता है",
+       "district": 66,
+       "state": 64
+      },
+      {
+       "code": "C-8.6",
+       "en": "Adds and subtracts 2-digit numbers fluently",
+       "hi": "दो अंकों की संख्याओं का जोड़-घटाव धाराप्रवाह करता है",
+       "district": 64,
+       "state": 64
+      },
+      {
+       "code": "C-8.7",
+       "en": "Multiplication as repeated addition, division as sharing",
+       "hi": "गुणा को बार-बार जोड़ और भाग को बराबर बाँटना समझता है",
+       "district": 61,
+       "state": 62
+      },
+      {
+       "code": "C-8.8",
+       "en": "Recognises basic shapes and relative position in space",
+       "hi": "मूल आकृतियाँ और स्थान में सापेक्ष स्थिति पहचानता है",
+       "district": 60,
+       "state": 51
+      },
+      {
+       "code": "C-8.9",
+       "en": "Simple measurement of length, weight and volume",
+       "hi": "लंबाई, भार व आयतन का सरल मापन",
+       "district": 69,
+       "state": 66
+      },
+      {
+       "code": "C-8.10",
+       "en": "Simple measurement of time",
+       "hi": "समय का सरल मापन",
+       "district": 65,
+       "state": 65
+      },
+      {
+       "code": "C-8.11",
+       "en": "Simple transactions with money up to ₹100",
+       "hi": "₹100 तक के पैसों का सरल लेन-देन",
+       "district": 57,
+       "state": 57
+      },
+      {
+       "code": "C-8.12",
+       "en": "Vocabulary for quantities, shapes, space and measurement",
+       "hi": "मात्रा, आकृति, स्थान व मापन की शब्दावली",
+       "district": 60,
+       "state": 61
+      },
+      {
+       "code": "C-8.13",
+       "en": "Formulates and solves simple problems",
+       "hi": "सरल गणितीय समस्याएँ बनाता और हल करता है",
+       "district": 61,
+       "state": 59
+      }
+     ]
+    },
+    "pages": {
+     "overall": {
+      "pdf": 15,
+      "printed": "01"
+     },
+     "competencies": {
+      "pdf": 18,
+      "printed": "04"
+     }
+    },
+    "url": "https://parakh.ncert.gov.in/media/public_files/2025-08/Report_Lucknow_IND09162.pdf"
+   },
+   "aser": {
+    "govt_school_enrolment_6_14": 41.8,
+    "not_in_school_6_14": 4.7,
+    "std3_5_read_std2": 54.7,
+    "std3_5_subtraction": 52.8,
+    "std6_8_read_std2": 72.5,
+    "std6_8_division": 45.1,
+    "page": 2,
+    "verified_from_file": true
+   },
+   "nfhs": {
+    "women_10plus_schooling": {
+     "en": "Women (15–49) with 10 or more years of schooling",
+     "hi": "10 या अधिक वर्ष स्कूली शिक्षा वाली महिलाएँ (15–49)",
+     "nfhs5": 51.9,
+     "nfhs4": 56.3
+    },
+    "women_literate": {
+     "en": "Women (15–49) who are literate",
+     "hi": "साक्षर महिलाएँ (15–49)",
+     "nfhs5": 78.4,
+     "nfhs4": null
+    },
+    "under5_stunted": {
+     "en": "Children under 5 who are stunted",
+     "hi": "ठिगनेपन से ग्रस्त 5 वर्ष से छोटे बच्चे",
+     "nfhs5": 32.1,
+     "nfhs4": 37.5
+    },
+    "population_electricity": {
+     "en": "Population living in households with electricity",
+     "hi": "बिजली वाले घरों में रहने वाली आबादी",
+     "nfhs5": 96.8,
+     "nfhs4": 93.8
+    }
+   },
+   "udise": {
+    "name": "Lucknow",
+    "lgd_district": 162,
+    "udise_rows": 4145,
+    "udise_rows_with_lgd_block": 1090,
+    "lgd_blocks": [
+     "Bakshi-ka-talab",
+     "Chinhat",
+     "Gosaiganj",
+     "Kakori",
+     "Mal",
+     "Malihabad",
+     "Mohanlalganj",
+     "Sarojaninagar"
+    ],
+    "government_class_1_5": 1293,
+    "outside_outline_or_no_position": 33,
+    "used": 695,
+    "type_mismatches": 176,
+    "mean_class3_gap": 12.1
+   }
+  },
+  "DST-03": {
+   "name": "Varanasi",
+   "lgd_code": 187,
+   "prs_code": "IND09187",
+   "prs": {
+    "language": 67,
+    "mathematics": 61,
+    "state": {
+     "language": 68,
+     "mathematics": 64
+    },
+    "national": {
+     "language": 64,
+     "mathematics": 60
+    },
+    "participation": {
+     "schools": 46,
+     "teachers": 135,
+     "students": 1152
+    },
+    "competencies": {
+     "language": [
+      {
+       "code": "C-9.7",
+       "en": "Knows and uses enough words for day-to-day interactions; guesses new words from known vocabulary",
+       "hi": "रोज़मर्रा की बातचीत के लिए पर्याप्त शब्द जानता है; नए शब्दों का अर्थ अनुमान लगाता है",
+       "district": 71,
+       "state": 72
+      },
+      {
+       "code": "C-10.5",
+       "en": "Reads short stories and understands them on their own (characters, storyline, intent)",
+       "hi": "छोटी कहानियाँ स्वयं पढ़कर समझता है (पात्र, कथानक, आशय)",
+       "district": 63,
+       "state": 65
+      },
+      {
+       "code": "C-10.7",
+       "en": "Reads and understands short news items, instructions, recipes and notices",
+       "hi": "छोटी ख़बरें, निर्देश, नुस्ख़े और सूचनाएँ पढ़कर समझता है",
+       "district": 64,
+       "state": 66
+      }
+     ],
+     "mathematics": [
+      {
+       "code": "C-8.1",
+       "en": "Sorts objects into groups and sub-groups",
+       "hi": "वस्तुओं को समूहों व उप-समूहों में छाँटता है",
+       "district": 71,
+       "state": 71
+      },
+      {
+       "code": "C-8.2",
+       "en": "Identifies and extends simple patterns",
+       "hi": "सरल पैटर्न पहचानता और आगे बढ़ाता है",
+       "district": 68,
+       "state": 68
+      },
+      {
+       "code": "C-8.4",
+       "en": "Arranges numbers up to 99 in order",
+       "hi": "99 तक की संख्याओं को क्रम में लगाता है",
+       "district": 53,
+       "state": 58
+      },
+      {
+       "code": "C-8.5",
+       "en": "Recognises and uses numerals up to 99 with place value",
+       "hi": "स्थानीय मान के साथ 99 तक के अंक पहचानता है",
+       "district": 66,
+       "state": 64
+      },
+      {
+       "code": "C-8.6",
+       "en": "Adds and subtracts 2-digit numbers fluently",
+       "hi": "दो अंकों की संख्याओं का जोड़-घटाव धाराप्रवाह करता है",
+       "district": 61,
+       "state": 64
+      },
+      {
+       "code": "C-8.7",
+       "en": "Multiplication as repeated addition, division as sharing",
+       "hi": "गुणा को बार-बार जोड़ और भाग को बराबर बाँटना समझता है",
+       "district": 56,
+       "state": 62
+      },
+      {
+       "code": "C-8.8",
+       "en": "Recognises basic shapes and relative position in space",
+       "hi": "मूल आकृतियाँ और स्थान में सापेक्ष स्थिति पहचानता है",
+       "district": 44,
+       "state": 51
+      },
+      {
+       "code": "C-8.9",
+       "en": "Simple measurement of length, weight and volume",
+       "hi": "लंबाई, भार व आयतन का सरल मापन",
+       "district": 66,
+       "state": 66
+      },
+      {
+       "code": "C-8.10",
+       "en": "Simple measurement of time",
+       "hi": "समय का सरल मापन",
+       "district": 63,
+       "state": 65
+      },
+      {
+       "code": "C-8.11",
+       "en": "Simple transactions with money up to ₹100",
+       "hi": "₹100 तक के पैसों का सरल लेन-देन",
+       "district": 53,
+       "state": 57
+      },
+      {
+       "code": "C-8.12",
+       "en": "Vocabulary for quantities, shapes, space and measurement",
+       "hi": "मात्रा, आकृति, स्थान व मापन की शब्दावली",
+       "district": 56,
+       "state": 61
+      },
+      {
+       "code": "C-8.13",
+       "en": "Formulates and solves simple problems",
+       "hi": "सरल गणितीय समस्याएँ बनाता और हल करता है",
+       "district": 55,
+       "state": 59
+      }
+     ]
+    },
+    "pages": {
+     "overall": {
+      "pdf": 15,
+      "printed": "01"
+     },
+     "competencies": {
+      "pdf": 18,
+      "printed": "04"
+     }
+    },
+    "url": "https://parakh.ncert.gov.in/media/public_files/2025-08/Report_Varanasi_IND09187.pdf"
+   },
+   "aser": {
+    "govt_school_enrolment_6_14": 49.6,
+    "not_in_school_6_14": 2.4,
+    "std3_5_read_std2": 61,
+    "std3_5_subtraction": 62.6,
+    "std6_8_read_std2": 75.8,
+    "std6_8_division": 50.7,
+    "page": 2,
+    "verified_from_file": true
+   },
+   "nfhs": {
+    "women_10plus_schooling": {
+     "en": "Women (15–49) with 10 or more years of schooling",
+     "hi": "10 या अधिक वर्ष स्कूली शिक्षा वाली महिलाएँ (15–49)",
+     "nfhs5": 55,
+     "nfhs4": 44
+    },
+    "women_literate": {
+     "en": "Women (15–49) who are literate",
+     "hi": "साक्षर महिलाएँ (15–49)",
+     "nfhs5": 79,
+     "nfhs4": null
+    },
+    "under5_stunted": {
+     "en": "Children under 5 who are stunted",
+     "hi": "ठिगनेपन से ग्रस्त 5 वर्ष से छोटे बच्चे",
+     "nfhs5": 37.4,
+     "nfhs4": 44.7
+    },
+    "population_electricity": {
+     "en": "Population living in households with electricity",
+     "hi": "बिजली वाले घरों में रहने वाली आबादी",
+     "nfhs5": 97.2,
+     "nfhs4": 90
+    }
+   },
+   "udise": {
+    "name": "Varanasi",
+    "lgd_district": 187,
+    "udise_rows": 3313,
+    "udise_rows_with_lgd_block": 1897,
+    "lgd_blocks": [
+     "Arajiline",
+     "Baragaon",
+     "Chiraigaon",
+     "Cholapur",
+     "Harahua",
+     "Kashi Vidyapeeth",
+     "Pindra",
+     "Sevapuri"
+    ],
+    "government_class_1_5": 921,
+    "outside_outline_or_no_position": 92,
+    "used": 703,
+    "type_mismatches": 100,
+    "mean_class3_gap": 12.5
+   }
+  }
+ },
+ "state": {
+  "name": "Uttar Pradesh",
+  "prs": {
+   "language": 68,
+   "mathematics": 64
+  },
+  "aser": {
+   "govt_school_enrolment_6_14": 49.1,
+   "not_in_school_6_14": 3.9,
+   "std3_5_read_std2": 46.5,
+   "std3_5_subtraction": 52.7,
+   "std6_8_read_std2": 68.8,
+   "std6_8_division": 49.4
+  }
+ },
+ "pab": {
+  "title": "Samagra Shiksha — Uttar Pradesh: minutes of the Project Approval Board, 2025-26",
+  "url": "https://web.archive.org/web/20250712214637id_/https://dsel.education.gov.in/sites/default/files/pab/UP_PAB_Minutes_2025_26.pdf",
+  "file": "UP_PAB_Minutes_2025_26.pdf",
+  "revision_url": "https://web.archive.org/web/20250712222733id_/https://dsel.education.gov.in/sites/default/files/pab/PAB_minutes_revision_UP.pdf",
+  "lines": {
+   "tlm_grade3": {
+    "key": "tlm_grade3",
+    "amount_inr": 165,
+    "unit": "per child",
+    "pdf_page": 48,
+    "printed": "20 of 35",
+    "line_en": "Elementary Head TLM (Grade III): teaching-learning material for every child in Grades 3–5 of government schools",
+    "line_hi": "प्रारंभिक TLM (कक्षा 3): सरकारी विद्यालयों में कक्षा 3–5 के हर बच्चे के लिए शिक्षण-अधिगम सामग्री"
+   },
+   "tlm_grade1_2": {
+    "key": "tlm_grade1_2",
+    "amount_inr": 165,
+    "unit": "per child",
+    "pdf_page": 48,
+    "printed": "20 of 35",
+    "line_en": "TLM for pre-primary sections and Grades 1 and 2",
+    "line_hi": "पूर्व-प्राथमिक और कक्षा 1–2 के लिए TLM"
+   },
+   "teacher_resource_3_5": {
+    "key": "teacher_resource_3_5",
+    "amount_inr": 100,
+    "unit": "per teacher",
+    "pdf_page": 48,
+    "printed": "20 of 35",
+    "line_en": "Teacher Resource Material for teachers of Grades 3–5",
+    "line_hi": "कक्षा 3–5 के शिक्षकों के लिए शिक्षक संसाधन सामग्री"
+   },
+   "fln_training_3_5": {
+    "key": "fln_training_3_5",
+    "amount_inr": 1300,
+    "unit": "per teacher",
+    "pdf_page": 48,
+    "printed": "20 of 35",
+    "line_en": "Capacity building (5-day training) of teachers of Grades 3–5",
+    "line_hi": "कक्षा 3–5 के शिक्षकों का क्षमता संवर्धन (5 दिवसीय प्रशिक्षण)"
+   },
+   "library_primary": {
+    "key": "library_primary",
+    "amount_inr": 2000,
+    "unit": "per school",
+    "pdf_page": 47,
+    "printed": "19 of 35",
+    "line_en": "Library grant, primary school (Classes 1–5)",
+    "line_hi": "पुस्तकालय अनुदान, प्राथमिक विद्यालय (कक्षा 1–5)"
+   },
+   "library_composite": {
+    "key": "library_composite",
+    "amount_inr": 3000,
+    "unit": "per school",
+    "pdf_page": 47,
+    "printed": "19 of 35",
+    "line_en": "Library grant, composite school (Classes 1–8)",
+    "line_hi": "पुस्तकालय अनुदान, कंपोज़िट विद्यालय (कक्षा 1–8)"
+   },
+   "inservice_training": {
+    "key": "inservice_training",
+    "amount_inr": 1500,
+    "unit": "per teacher",
+    "pdf_page": 47,
+    "printed": "19 of 35",
+    "line_en": "In-service teacher training (5 days, regular teachers of Classes 1–8)",
+    "line_hi": "सेवारत शिक्षक प्रशिक्षण (5 दिन, कक्षा 1–8 के नियमित शिक्षक)"
+   },
+   "community_mobilisation": {
+    "key": "community_mobilisation",
+    "amount_inr": 1500,
+    "unit": "per school",
+    "pdf_page": 39,
+    "printed": "11 of 35",
+    "line_en": "Community mobilisation, per school",
+    "line_hi": "सामुदायिक सहभागिता, प्रति विद्यालय"
+   },
+   "smc_training": {
+    "key": "smc_training",
+    "amount_inr": 3000,
+    "unit": "per school",
+    "pdf_page": 39,
+    "printed": "11 of 35",
+    "line_en": "Training of the School Management Committee, per school",
+    "line_hi": "विद्यालय प्रबंध समिति का प्रशिक्षण, प्रति विद्यालय"
+   },
+   "remedial_6_8": {
+    "key": "remedial_6_8",
+    "amount_inr": 500,
+    "unit": "per child",
+    "pdf_page": 44,
+    "printed": "16 of 35",
+    "line_en": "Learning Enhancement Programme (remedial teaching), sanctioned for Classes 6–8 only",
+    "line_hi": "अधिगम संवर्धन कार्यक्रम (उपचारात्मक शिक्षण), केवल कक्षा 6–8 के लिए स्वीकृत"
+   },
+   "learning_assessment": {
+    "key": "learning_assessment",
+    "amount_inr": 65,
+    "unit": "per child",
+    "pdf_page": 45,
+    "printed": "17 of 35",
+    "line_en": "Student learning assessment (board exams of Classes 5 and 8)",
+    "line_hi": "विद्यार्थी अधिगम आकलन (कक्षा 5 व 8 की बोर्ड परीक्षा)"
+   }
+  },
+  "cards": {
+   "INT-01": {
+    "basis": "pab_proxy",
+    "line": "remedial_6_8",
+    "per": "child_in_class",
+    "note_en": "PAB rate for remedial teaching, which UP sanctions for Classes 6–8 only; there is no Class 1–3 line. Used as the nearest rate.",
+    "note_hi": "उपचारात्मक शिक्षण की PAB दर, जो उत्तर प्रदेश में केवल कक्षा 6–8 के लिए स्वीकृत है; कक्षा 1–3 की कोई पंक्ति नहीं। निकटतम दर के रूप में प्रयुक्त।",
+    "amount_inr": 500,
+    "amount_composite_inr": null,
+    "unit": "per child",
+    "pdf_page": 44,
+    "printed": "16 of 35"
+   },
+   "INT-02": {
+    "basis": "pab_proxy",
+    "line": "remedial_6_8",
+    "per": "child_in_class",
+    "note_en": "PAB rate for remedial teaching, which UP sanctions for Classes 6–8 only; there is no Class 1–3 line. Used as the nearest rate.",
+    "note_hi": "उपचारात्मक शिक्षण की PAB दर, जो उत्तर प्रदेश में केवल कक्षा 6–8 के लिए स्वीकृत है; कक्षा 1–3 की कोई पंक्ति नहीं। निकटतम दर के रूप में प्रयुक्त।",
+    "amount_inr": 500,
+    "amount_composite_inr": null,
+    "unit": "per child",
+    "pdf_page": 44,
+    "printed": "16 of 35"
+   },
+   "INT-05": {
+    "basis": "pab",
+    "line": "teacher_resource_3_5",
+    "per": "teacher",
+    "note_en": "PAB line for teacher resource material (the Grades 1–2 handbook line has the same ₹100). The half-day orientation has no line of its own.",
+    "note_hi": "शिक्षक संसाधन सामग्री की PAB पंक्ति (कक्षा 1–2 की पुस्तिका की दर भी ₹100)। आधे दिन के अभिमुखीकरण की अलग पंक्ति नहीं है।",
+    "amount_inr": 100,
+    "amount_composite_inr": null,
+    "unit": "per teacher",
+    "pdf_page": 48,
+    "printed": "20 of 35"
+   },
+   "INT-06": {
+    "basis": "pab",
+    "line": "teacher_resource_3_5",
+    "per": "teacher",
+    "note_en": "PAB line for teacher resource material (the Grades 1–2 handbook line has the same ₹100). The orientation has no line of its own.",
+    "note_hi": "शिक्षक संसाधन सामग्री की PAB पंक्ति (कक्षा 1–2 की पुस्तिका की दर भी ₹100)। अभिमुखीकरण की अलग पंक्ति नहीं है।",
+    "amount_inr": 100,
+    "amount_composite_inr": null,
+    "unit": "per teacher",
+    "pdf_page": 48,
+    "printed": "20 of 35"
+   },
+   "INT-08": {
+    "basis": "pab",
+    "line": "tlm_grade3",
+    "per": "child_in_class",
+    "note_en": "PAB TLM line, ₹165 a child (the same rate as the Grades 1–2 TLM line).",
+    "note_hi": "PAB की TLM पंक्ति, ₹165 प्रति बच्चा (कक्षा 1–2 की TLM दर भी यही)।",
+    "amount_inr": 165,
+    "amount_composite_inr": null,
+    "unit": "per child",
+    "pdf_page": 48,
+    "printed": "20 of 35"
+   },
+   "INT-10": {
+    "basis": "pab",
+    "line": "community_mobilisation",
+    "per": "school",
+    "note_en": "PAB line for community mobilisation, per school.",
+    "note_hi": "सामुदायिक सहभागिता की PAB पंक्ति, प्रति विद्यालय।",
+    "amount_inr": 1500,
+    "amount_composite_inr": null,
+    "unit": "per school",
+    "pdf_page": 39,
+    "printed": "11 of 35"
+   },
+   "INT-14": {
+    "basis": "pab_proxy",
+    "line": "inservice_training",
+    "per": "teacher",
+    "note_en": "PAB rate for a 5-day in-service training; this card is a 2-day training, so the rate overstates it.",
+    "note_hi": "5 दिवसीय सेवारत प्रशिक्षण की PAB दर; यह कार्ड 2 दिन का प्रशिक्षण है, इसलिए दर अधिक आँकती है।",
+    "amount_inr": 1500,
+    "amount_composite_inr": null,
+    "unit": "per teacher",
+    "pdf_page": 47,
+    "printed": "19 of 35"
+   },
+   "INT-15": {
+    "basis": "pab_proxy",
+    "line": "learning_assessment",
+    "per": "child_in_class",
+    "note_en": "PAB rate for one student assessment (the Class 5 and 8 board exams), applied once per child.",
+    "note_hi": "एक विद्यार्थी आकलन की PAB दर (कक्षा 5 व 8 की बोर्ड परीक्षा), प्रति बच्चा एक बार।",
+    "amount_inr": 65,
+    "amount_composite_inr": null,
+    "unit": "per child",
+    "pdf_page": 45,
+    "printed": "17 of 35"
+   },
+   "INT-16": {
+    "basis": "pab",
+    "line": "library_primary",
+    "line_composite": "library_composite",
+    "per": "school",
+    "note_en": "PAB library grant: ₹2,000 a primary school, ₹3,000 a composite (Class 1–8) school.",
+    "note_hi": "PAB पुस्तकालय अनुदान: प्राथमिक विद्यालय ₹2,000, कंपोज़िट (कक्षा 1–8) विद्यालय ₹3,000।",
+    "amount_inr": 2000,
+    "amount_composite_inr": 3000,
+    "unit": "per school",
+    "pdf_page": 47,
+    "printed": "19 of 35"
+   }
+  }
+ },
+ "calibration": {
+  "anchor_round": "RND-2025-02",
+  "grade": 3,
+  "note": "PRS 2024 was held in December 2024; the demo round nearest to it is R0, February 2025."
+ }
+}

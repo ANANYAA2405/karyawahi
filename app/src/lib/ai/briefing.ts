@@ -8,7 +8,9 @@ import { overviewSummary } from '../overview';
 import { hotspotUnits } from '../hotspots';
 import { getAppState, setAppState } from '../db';
 import { nowIso } from '../clock';
+import { may } from '../guard';
 import { ID_RE } from './chat';
+import { auditNumbers, type NumberAudit } from './audit-numbers';
 
 /**
  * The dashboard briefing. Distinct from the chat: one call, structured output, over the
@@ -35,6 +37,8 @@ export interface BriefingEnvelope {
   cached?: boolean;
   stale?: boolean;
   sources?: string[];
+  /** The auditor pass over every figure in the briefing. */
+  audit?: NumberAudit;
   message?: string;
 }
 
@@ -61,6 +65,16 @@ const PROMPT = `You write the daily briefing on an education officer's Karyavahi
 
 const key = (s: Session) => `briefing-v2:${s.user_id}`;
 
+/**
+ * Who gets the AI executive briefing: holders of ai.executive_briefing in the permission matrix
+ * (district and state officers, and the demo administrator). A block officer's overview, and
+ * every field role's, shows the computed summary instead (overview.plainBrief): the same figures,
+ * with no model in between. The route, this module and any page that shows the briefing all ask
+ * this one question, so the page and the permission cannot drift apart again.
+ */
+export const mayReadBriefing = (s: Session): boolean => may(s, 'ai.executive_briefing');
+export const BRIEFING_REFUSAL = 'The AI executive briefing is for district and state officers. The summary on your overview is computed from the same records.';
+
 export function briefingVersion(s: Session): { version: string; summary: ReturnType<typeof overviewSummary> } {
   const summary = overviewSummary(s);
   const { demoDate: _d, ...stable } = summary;
@@ -69,6 +83,7 @@ export function briefingVersion(s: Session): { version: string; summary: ReturnT
 }
 
 export function cachedBriefing(s: Session): BriefingEnvelope | null {
+  if (!mayReadBriefing(s)) return null;
   const raw = getAppState(key(s));
   if (!raw) return null;
   try {
@@ -79,6 +94,7 @@ export function cachedBriefing(s: Session): BriefingEnvelope | null {
 }
 
 export async function generateBriefing(s: Session): Promise<BriefingEnvelope> {
+  if (!mayReadBriefing(s)) return { status: 'error', message: BRIEFING_REFUSAL };
   const st = aiStatus();
   const client = aiClient();
   if (!client) return { status: 'unconfigured', message: 'No model API key is configured on the server, so no briefing can be generated. Every figure on this page is still computed from the records.' };
@@ -115,7 +131,11 @@ export async function generateBriefing(s: Session): Promise<BriefingEnvelope> {
     // Drop any id the summary did not contain.
     parsed.priorities = (parsed.priorities ?? []).slice(0, 4).map((p) => ({ text: p.text, source_ids: (p.source_ids ?? []).filter((id) => allowed.has(id)) }));
     const sources = [...new Set(parsed.priorities.flatMap((p) => p.source_ids))];
-    const env: BriefingEnvelope & { version: string } = { status: 'ok', briefing: parsed, generatedAt: nowIso(), model: st.model, sources, version };
+    const audit = auditNumbers([
+      parsed.headline, parsed.geographic_impact, ...(parsed.what_changed ?? []), ...parsed.priorities.map((p) => p.text),
+      ...(parsed.risks ?? []), ...(parsed.next_actions ?? []), parsed.caveat,
+    ].join('\n'), [compact]);
+    const env: BriefingEnvelope & { version: string } = { status: 'ok', briefing: parsed, generatedAt: nowIso(), model: st.model, sources, audit, version };
     setAppState(key(s), JSON.stringify(env));
     logAi(s, {
       kind: 'executive_brief', model: st.model, question: 'dashboard briefing', tools: ['overview_summary'], referencedIds: sources, status: 'ok',

@@ -328,7 +328,17 @@ export interface Intervention {
   resources: string[];
   duration_weeks: number;
   lever: Lever;
-  cost_basis: { amount_inr: number; unit: string; note: string; illustrative: true };
+  /**
+   * The seed's cards carry an illustrative cost. Where a card maps to a line of the UP PAB
+   * 2025-26 minutes, the app's real-data layer replaces it with that unit cost and its page
+   * (basis 'pab'), or with a neighbouring line's rate, said so (basis 'pab_proxy').
+   */
+  cost_basis: {
+    amount_inr: number; unit: string; note: string; illustrative: boolean;
+    basis?: 'pab' | 'pab_proxy'; per?: 'child_in_class' | 'teacher' | 'school'; amount_composite_inr?: number | null; note_hi?: string;
+    citation?: { doc: string; url: string; pdf_page: number; printed_page: string; line: string };
+    illustrative_original?: { amount_inr: number; unit: string } | null;
+  };
   evidence: {
     status: 'sourced_summary_verify' | 'illustrative';
     summary: string;
@@ -399,7 +409,7 @@ export interface CasePlan {
     settings_version_id: ID;
   } | null;
   estimated_cost_inr: number;
-  cost_is_illustrative: true;
+  cost_is_illustrative: boolean;
   status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'revision_requested' | 'superseded' | 'referred_pab';
   created_at: ISOTime;
   created_by: ID;

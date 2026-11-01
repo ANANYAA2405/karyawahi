@@ -6,7 +6,9 @@ import { listCases } from '@/lib/cases';
 import { listComplaints, STATUS as CSTATUS, OPEN_STATUSES } from '@/lib/complaints';
 import { competencies } from '@/lib/repo';
 import { all } from '@/lib/db';
-import { schoolsPred, and } from '@/lib/scope';
+import { schoolsPred, and, tasksPred } from '@/lib/scope';
+import { schoolsNow } from '@/lib/school-now';
+import { today } from '@/lib/clock';
 
 /**
  * Detail for one selected map area: competency breakdown, open cases, complaints, data
@@ -43,8 +45,30 @@ export async function GET(req: Request) {
   const schools = Number(all<{ n: number }>(`select count(*) n from schools sc where ${sp.sql}`, ...sp.params)[0]?.n ?? 0);
   const insufficientCells = breakdown.filter((b) => b.severity === 'insufficient').length;
 
+  // A school's situation right now: the same figures the map colours by, plus who last visited
+  // and the work open there. Only for a school the reader can see (canOpen above).
+  let now: Record<string, unknown> | null = null;
+  if (level === 'school') {
+    const n = schoolsNow(s, [id]).get(id);
+    if (n) {
+      const last = all<{ visit_date: string; visitor_role: string; purpose: string }>(
+        `select visit_date, visitor_role, purpose from visits where school_id = ? and visit_date <= ? order by visit_date desc limit 1`, id, today(),
+      )[0] ?? null;
+      const tp = and(tasksPred(s, 't'), { sql: `t.school_id = ? and t.status in ('assigned','acknowledged','in_progress','sent_back','submitted')`, params: [id] });
+      const work = all<{ open: number; overdue: number }>(
+        `select count(*) open, sum(case when t.submitted_at is null and t.due_date < ? then 1 else 0 end) overdue from tasks t where ${tp.sql}`, today(), ...tp.params,
+      )[0];
+      now = {
+        enrolment: n.enrolment, teachers: n.teachers, netTransfersOut: n.netTransfersOut,
+        lastVisit: last ? { date: last.visit_date, role: last.visitor_role, purpose: last.purpose, days: n.daysSinceVisit } : null,
+        attendance: n.attendance, levels: { teachers: n.teacherLevel, visits: n.visitLevel, attendance: n.attendanceLevel },
+        openTasks: Number(work?.open ?? 0), overdueTasks: Number(work?.overdue ?? 0),
+      };
+    }
+  }
+
   return Response.json({
-    id, name: unit.name, level, geometry: unit.geometry_source, schools,
+    id, name: unit.name, level, geometry: unit.geometry_source, schools, now,
     compared: pair ? `${pair.prev.code} → ${pair.curr.code}` : null, imported: pair?.curr.import_date ?? null,
     breakdown,
     cases: cases.slice(0, 5).map((c) => ({ id: c.id, title: c.title, severity: c.severity, status: c.status })), caseCount: cases.length,
@@ -52,7 +76,11 @@ export async function GET(req: Request) {
     complaints: complaints.slice(0, 4).map((c) => ({ id: c.id, title: c.title, status: CSTATUS[c.status]?.label ?? c.status, priority: c.priority })), complaintCount: complaints.length,
     warnings: [
       ...(insufficientCells ? [`${insufficientCells} class × competency cell${insufficientCells > 1 ? 's have' : ' has'} too few students to judge.`] : []),
-      ...(unit.geometry_source !== 'verified' ? ['Boundary is illustrative, not a verified boundary.'] : []),
+      ...(unit.geometry_source === 'osm' ? ['Real boundary from OpenStreetMap; the figures inside it are simulated.']
+        : unit.geometry_source === 'simulated' ? ['Simulated boundary drawn inside a real district; not a real boundary.']
+        : unit.geometry_source === 'approximate' ? ['Approximate city area: a circle around the real city centre.']
+        : unit.geometry_source === 'udise' ? ['Real school (UDISE+), name withheld; pin moved a few hundred metres. Its learning results are simulated.']
+        : unit.geometry_source !== 'verified' ? ['Boundary is illustrative, not a verified boundary.'] : []),
     ],
   });
 }

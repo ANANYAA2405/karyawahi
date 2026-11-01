@@ -93,6 +93,11 @@ export function settingsAt(date: string): SettingVersion {
   return [...SETTINGS].reverse().find((s) => s.effective_from <= date) ?? SETTINGS[0];
 }
 
+/** A settings version by id, such as the one a plan's pre-registration locked. */
+export function settingsById(id: string | null | undefined): SettingVersion | undefined {
+  return SETTINGS.find((s) => s.id === id);
+}
+
 // ---------------- task templates ----------------
 const t = (x: TaskTemplate) => x;
 export const TT = {

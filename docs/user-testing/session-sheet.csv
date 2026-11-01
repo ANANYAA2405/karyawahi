@@ -1,0 +1,2 @@
+session_date,participant,participant_type,role,device,language,consent,recording,task,result,time_s,errors,assists,quote,observation,severity,feedback_ids,sus_q1,sus_q2,sus_q3,sus_q4,sus_q5,sus_q6,sus_q7,sus_q8,sus_q9,sus_q10,claude_c1,claude_c2,notes
+EXAMPLE-DELETE-ME,P00,stand-in,headmaster,Android phone (own),hi,yes,no,HM-2,success,95,1,0,"(their exact words, short)","Tapped the photo thumbnail twice before finding जमा करें",2,FBK-000001,4,2,4,1,4,2,5,2,4,2,4,4,"Example row showing the format. Delete it before the first real session."

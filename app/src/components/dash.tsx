@@ -123,12 +123,12 @@ export function OutcomeMix({
             const l = OUTCOME_LABEL[r.category as OutcomeCategory];
             return (
               <li key={r.category} className="flex flex-wrap items-center gap-3">
-                <span className="min-w-[13rem] text-[13.5px] text-ink">
+                <span className="min-w-[13rem] text-sm text-ink">
                   {l ? pick(lang, l.en, l.hi) : r.category.replace(/_/g, ' ')}
                 </span>
                 <Bar value={r.c} max={Math.max(...rows.map((x) => x.c))} tone={tone(r.category) as 'good' | 'crit' | 'warn' | 'brand'} width={160} />
-                <span className="tnum text-[13px] font-medium text-ink">{r.c}</span>
-                <span className="tnum text-[12px] text-ink-faint">{Math.round((r.c / total) * 100)}%</span>
+                <span className="tnum text-sm font-medium text-ink">{r.c}</span>
+                <span className="tnum text-xs text-ink-faint">{Math.round((r.c / total) * 100)}%</span>
               </li>
             );
           })}
@@ -158,7 +158,7 @@ export function DetectionHealth({
           'Candidates it refused are counted here too, so the thresholds can be argued with rather than trusted.',
           'जिन्हें ख़ारिज किया, वे भी गिने गए हैं, ताकि सीमाओं पर बहस हो सके।',
         )}
-        right={<Link href="/findings" className="link text-[13px]">{pick(lang, 'All findings', 'सभी निष्कर्ष')}</Link>}
+        right={<Link href="/findings" className="link text-sm">{pick(lang, 'All findings', 'सभी निष्कर्ष')}</Link>}
       />
       {total === 0 ? <Empty /> : (
         <ul className="card-pad space-y-2">
@@ -168,7 +168,7 @@ export function DetectionHealth({
               <li key={r.status} className="flex flex-wrap items-center gap-3">
                 <span className="min-w-[12rem]"><Pill tone={l.tone}>{pick(lang, l.en, l.hi)}</Pill></span>
                 <Bar value={r.c} max={Math.max(...rows.map((x) => x.c))} tone={l.tone === 'critical' ? 'crit' : l.tone === 'warn' ? 'warn' : 'brand'} width={160} />
-                <span className="tnum text-[13px] font-medium text-ink">{fmtInt(r.c)}</span>
+                <span className="tnum text-sm font-medium text-ink">{fmtInt(r.c)}</span>
               </li>
             );
           })}
@@ -217,11 +217,11 @@ export function CompetencyGrid({
                         <>
                           <span className="tnum font-medium">{r.pct.toFixed(1)}%</span>
                           {change !== null ? (
-                            <span className={`tnum ml-1.5 text-[12px] ${change > 0 ? 'text-good' : change < 0 ? 'text-crit' : 'text-ink-faint'}`}>
+                            <span className={`tnum ml-1.5 text-xs ${change > 0 ? 'text-good' : change < 0 ? 'text-crit' : 'text-ink-faint'}`}>
                               {change > 0 ? '+' : change < 0 ? '−' : ''}{Math.abs(change).toFixed(1)}
                             </span>
                           ) : null}
-                          <span className="block text-[11px] text-ink-faint">{fmtInt(r.n)} {pick(lang, 'assessed', 'आकलित')}</span>
+                          <span className="block text-2xs text-ink-faint">{fmtInt(r.n)} {pick(lang, 'assessed', 'आकलित')}</span>
                         </>
                       )}
                     </td>

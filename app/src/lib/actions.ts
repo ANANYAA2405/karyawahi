@@ -1,10 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { requireSession } from './session';
+import { SESSION_COOKIE, createSession, requireSession, sessionCookieOptions } from './session';
+import { isHttps, localPath } from './http';
 import { Refused } from './guard';
 import * as w from './write';
+import { runScheduledSweep } from './scheduler';
 import type { CaseStatus } from '@domain/types';
 
 /**
@@ -69,6 +72,69 @@ export async function decidePlanAction(_prev: State, form: FormData): Promise<St
   return res;
 }
 
+// ------------------------------------------------------------------ plan composer
+/** Save a composed plan, and submit it for approval when the officer pressed that button. A
+ *  refused submission leaves the saved draft in place and says so. */
+export async function composePlanAction(_prev: State, form: FormData): Promise<State> {
+  const s = await requireSession();
+  const caseId = str(form, 'case_id');
+  const submit = str(form, 'intent') === 'submit';
+  let saved = false;
+  const res = await attempt(() => {
+    w.draftPlan(s, {
+      caseId,
+      interventionId: str(form, 'intervention_id'),
+      schoolIds: str(form, 'school_ids').split(',').filter(Boolean),
+      rationale: str(form, 'rationale'),
+      caseVersion: Number(str(form, 'case_version')),
+    });
+    saved = true;
+    if (submit) w.transitionCase(s, caseId, 'awaiting_approval');
+  }, submit ? 'Plan saved and submitted. Another officer now has to approve it.' : 'Plan saved as a draft. Submit it from the case when it is ready.');
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath('/approvals');
+  if (res.ok) redirect(`/cases/${caseId}?done=${encodeURIComponent(res.ok)}#plan`);
+  if (saved) {
+    redirect(`/cases/${caseId}?done=${encodeURIComponent(`Plan saved as a draft, but not submitted: ${res.error}`)}#plan`);
+  }
+  return res;
+}
+
+/** Turn an approved plan into tasks, with the owners and due dates the officer settled on. */
+export async function assignTasksAction(_prev: State, form: FormData): Promise<State> {
+  const s = await requireSession();
+  const caseId = str(form, 'case_id');
+  const rows = form.getAll('row').map(String).map((rowKey) => ({
+    rowKey,
+    ownerUserId: str(form, `owner:${rowKey}`),
+    dueDate: str(form, `due:${rowKey}`),
+  }));
+  let count = 0;
+  const res = await attempt(() => {
+    count = w.assignTasks(s, { caseId, caseVersion: Number(str(form, 'case_version')), rows }).taskIds.length;
+  }, 'Tasks assigned.');
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath('/tasks');
+  if (res.ok) redirect(`/cases/${caseId}?done=${encodeURIComponent(`${count} tasks assigned. Each owner has been notified.`)}#work`);
+  return res;
+}
+
+/** Give a task to someone else, with the reason kept on the record. */
+export async function reassignTaskAction(_prev: State, form: FormData): Promise<State> {
+  const s = await requireSession();
+  const taskId = str(form, 'task_id');
+  const res = await attempt(() => {
+    w.reassignTask(s, {
+      taskId, newOwnerUserId: str(form, 'owner'), reason: str(form, 'reason'),
+      taskVersion: Number(str(form, 'task_version')),
+    });
+  }, 'Task reassigned. Both the new and the previous owner have been told.');
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath('/tasks');
+  if (res.ok) redirect(`/tasks/${taskId}?done=${encodeURIComponent(res.ok)}`);
+  return res;
+}
+
 export async function setConclusionAction(_prev: State, form: FormData): Promise<State> {
   const s = await requireSession();
   const caseId = str(form, 'case_id');
@@ -99,19 +165,34 @@ export async function verifyEvidenceAction(_prev: State, form: FormData): Promis
 export async function submitEvidenceAction(_prev: State, form: FormData): Promise<State> {
   const s = await requireSession();
   const taskId = str(form, 'task_id');
+  const file = form.get('photo');
+  const photo = file instanceof File && file.size > 0
+    ? { bytes: new Uint8Array(await file.arrayBuffer()), name: file.name }
+    : null;
+  // Where it was handed in comes from the phone's GPS fix (lat, lng, accuracy); the server works
+  // out the distance to the school and sets the status. A "gps" field in the form is not read.
+  let where = '';
   const res = await attempt(
     () => {
-      w.submitEvidence(s, {
+      const r = w.submitEvidence(s, {
         taskId,
         note: str(form, 'note'),
         schoolId: str(form, 'school_id') || null,
-        gps: (str(form, 'gps') || 'not_captured') as 'matched' | 'not_captured' | 'outside_radius',
+        location: { lat: str(form, 'lat'), lng: str(form, 'lng'), accuracy: str(form, 'accuracy') },
+        locationError: str(form, 'gps_error') || null,
+        clientId: str(form, 'client_id') || null,
+        photo,
       });
+      where = r.gps.status === 'matched' ? ' GPS: at the school.'
+        : r.gps.status === 'outside_radius' && r.gps.distance_m !== null ? ` GPS: ${r.gps.distance_m >= 1000 ? `${(r.gps.distance_m / 1000).toFixed(1)} km` : `${r.gps.distance_m} m`} from the school.`
+        : ' GPS: not available.';
     },
-    'Proof submitted. Someone other than you has to check it.',
+    photo ? 'Proof and photo submitted. Someone other than you has to check it.' : 'Proof submitted. Someone other than you has to check it.',
   );
+  if (res.ok) res.ok += where;
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath('/tasks');
+  revalidatePath('/today');
   return res;
 }
 
@@ -122,6 +203,7 @@ export async function acknowledgeTaskAction(_prev: State, form: FormData): Promi
   const res = await attempt(() => { w.acknowledgeTask(s, taskId); }, 'Marked as seen.');
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath('/tasks');
+  revalidatePath('/today');
   return res;
 }
 
@@ -131,6 +213,7 @@ export async function startTaskAction(_prev: State, form: FormData): Promise<Sta
   const res = await attempt(() => { w.startTask(s, taskId); }, 'Marked as started.');
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath('/tasks');
+  revalidatePath('/today');
   return res;
 }
 
@@ -147,7 +230,10 @@ export async function recomputeOutcomeAction(_prev: State, form: FormData): Prom
         evaluationId: evaluationId || undefined,
         followupRoundId: followupRoundId || undefined,
       });
-      detail = r.agreesWithStored
+      const did = r.did === null ? 'no estimate' : `${r.did > 0 ? '+' : ''}${r.did} pp`;
+      detail = r.newRound
+        ? `Checked against ${r.followupRoundId}: ${did}, ${r.category.replace(/_/g, ' ')}. Saved as a new outcome check; earlier checks stay on the record.`
+        : r.agreesWithStored
         ? `Re-derived from the raw assessment rows: ${r.did === null ? 'no estimate' : `${r.did > 0 ? '+' : ''}${r.did} pp`}, ${r.category.replace(/_/g, ' ')}. This matches what was on record.`
         : `Re-derived from the raw assessment rows: ${r.did === null ? 'no estimate' : `${r.did > 0 ? '+' : ''}${r.did} pp`}, ${r.category.replace(/_/g, ' ')}. This DIFFERS from what was on record — the evaluation has been updated.`;
     },
@@ -176,7 +262,7 @@ export async function markReadAction(form: FormData): Promise<void> {
   else if (id) w.markNotificationRead(s, id);
   revalidatePath('/notifications');
   const to = String(form.get('then') ?? '');
-  if (to) redirect(to);
+  if (to) redirect(localPath(to));
 }
 
 // ------------------------------------------------------------------ demo controls
@@ -187,6 +273,7 @@ export async function reminderSweepAction(_prev: State, form: FormData): Promise
     () => {
       const r = w.reminderSweep(s, str(form, 'as_of') || undefined);
       detail = `Sweep finished: ${r.remindersSent} reminder${r.remindersSent === 1 ? '' : 's'} sent, `
+        + `${r.breachNudges} overdue nudge${r.breachNudges === 1 ? '' : 's'} sent, `
         + `${r.escalationsCreated} escalation${r.escalationsCreated === 1 ? '' : 's'} raised. `
         + 'Running it again today will send nothing further.';
     },
@@ -204,6 +291,14 @@ export async function setClockAction(_prev: State, form: FormData): Promise<Stat
     () => { w.setDemoClock(s, `${date}T06:30:00.000Z`); },
     `The demo clock is now ${date}. Overdue counts and reminder windows move with it.`,
   );
+  // Deadlines follow the demo clock, so reminders due on the new date go out now, not at the next hourly run.
+  if (res.ok) {
+    const r = runScheduledSweep('clock_moved');
+    if (r && res.ok) {
+      res.ok += ` The reminder sweep ran for the new date: ${r.remindersSent} reminder${r.remindersSent === 1 ? '' : 's'}, `
+        + `${r.breachNudges} overdue nudge${r.breachNudges === 1 ? '' : 's'}, ${r.escalationsCreated} escalation${r.escalationsCreated === 1 ? '' : 's'}.`;
+    }
+  }
   revalidatePath('/', 'layout');
   return res;
 }
@@ -214,6 +309,13 @@ export async function demoResetAction(_prev: State, _form: FormData): Promise<St
     () => { w.demoReset(s); },
     'The demo has been restored to the canonical seed, and the reset itself is in the audit log.',
   );
+  // The reset replaced the database, sessions table included, which signed everyone out.
+  // Keep the admin who pressed the button signed in.
+  if (res.ok) {
+    runScheduledSweep('demo_reset');
+    const h = await headers();
+    (await cookies()).set(SESSION_COOKIE, createSession(s.user_id, h.get('user-agent')), sessionCookieOptions(isHttps(h)));
+  }
   revalidatePath('/', 'layout');
   return res;
 }
@@ -339,7 +441,14 @@ export async function registerAction(_prev: State, form: FormData): Promise<Stat
       scopeType: str(form, 'scope_type'), scopeId: str(form, 'scope_id'), affiliationRef: str(form, 'affiliation_ref') || undefined,
     });
   }, 'Request created.');
-  if (res.ok) redirect(`/register/status?id=${out.id}&email=${encodeURIComponent(str(form, 'email'))}&code=${out.code}`);
+  if (res.ok) {
+    // The demo shows the code on screen instead of emailing it; it goes in a cookie for this
+    // browser, never in the address (see reg-code.ts).
+    const { rememberDemoCode, rememberRequest } = await import('./reg-code');
+    await rememberDemoCode(out.id, out.code);
+    await rememberRequest(out.id, str(form, 'email'));
+    redirect(`/register/status?id=${out.id}`);
+  }
   return res;
 }
 
@@ -347,7 +456,11 @@ export async function verifyEmailAction(_prev: State, form: FormData): Promise<S
   const { verifyEmail } = await import('./onboarding');
   const id = str(form, 'id'); const email = str(form, 'email');
   const res = await attempt(() => verifyEmail(id, email, str(form, 'code')), 'Email verified.');
-  if (res.ok) redirect(`/register/status?id=${id}&email=${encodeURIComponent(email)}`);
+  if (res.ok) {
+    const { forgetDemoCode } = await import('./reg-code');
+    await forgetDemoCode();
+    redirect(`/register/status?id=${id}`);
+  }
   return res;
 }
 
@@ -358,15 +471,25 @@ export async function affiliationAction(_prev: State, form: FormData): Promise<S
   try { r = checkAffiliation(id, email, str(form, 'affiliation_ref') || undefined); }
   catch (e) { return { error: e instanceof Refused ? e.message : (e as Error).message }; }
   if (!r.passed) return { error: r.message };
-  redirect(`/register/status?id=${id}&email=${encodeURIComponent(email)}`);
+  redirect(`/register/status?id=${id}`);
 }
 
 export async function respondInfoAction(_prev: State, form: FormData): Promise<State> {
   const { respondToInfo } = await import('./onboarding');
   const id = str(form, 'id'); const email = str(form, 'email');
   const res = await attempt(() => respondToInfo(id, email, str(form, 'response')), 'Sent to the verifier.');
-  if (res.ok) redirect(`/register/status?id=${id}&email=${encodeURIComponent(email)}`);
+  if (res.ok) redirect(`/register/status?id=${id}`);
   return res;
+}
+
+/** Look a request up by reference and email; the email goes into a cookie, not the address. */
+export async function lookupRequestAction(_prev: State, form: FormData): Promise<State> {
+  const { publicRequest } = await import('./onboarding');
+  const r = publicRequest(str(form, 'id'), str(form, 'email'));
+  if (!r) return { error: 'No request matches that reference and email.' };
+  const { rememberRequest } = await import('./reg-code');
+  await rememberRequest(r.id, r.email);
+  redirect(`/register/status?id=${r.id}`);
 }
 
 export async function decideRegistrationAction(_prev: State, form: FormData): Promise<State> {
@@ -410,16 +533,11 @@ export async function accountStatusAction(_prev: State, form: FormData): Promise
 export async function setManagerAction(_prev: State, form: FormData): Promise<State> {
   const s = await requireSession();
   const { requirePermission } = await import('./authz');
-  const { setManager, userCard, ROLE_RANK } = await import('./org');
+  const { setManager } = await import('./org');
   const userId = str(form, 'user_id');
   const managerId = str(form, 'manager_id') || null;
   const res = await attempt(() => {
     requirePermission(s, 'manage_hierarchy', { kind: 'user', userId });
-    const u = userCard(userId);
-    const m = managerId ? userCard(managerId) : null;
-    if (managerId && (!m || m.status !== 'active')) throw new Refused('The designated authority must be an active user.', 'input');
-    if (u && m && ROLE_RANK[m.role] <= ROLE_RANK[u.role]) throw new Refused('The designated authority must hold a more senior role.', 'input');
-    if (managerId === userId) throw new Refused('A user cannot report to themselves.', 'input');
     setManager(s, userId, managerId, str(form, 'reason') || 'Reporting line updated');
   }, 'Reporting line updated.');
   revalidatePath('/admin/hierarchy');

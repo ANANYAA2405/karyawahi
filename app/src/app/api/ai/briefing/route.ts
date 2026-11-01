@@ -1,6 +1,5 @@
 import { getSession } from '@/lib/session';
-import { may } from '@/lib/guard';
-import { cachedBriefing, generateBriefing } from '@/lib/ai/briefing';
+import { cachedBriefing, generateBriefing, mayReadBriefing, BRIEFING_REFUSAL } from '@/lib/ai/briefing';
 import { rateLimited } from '@/lib/ai/client';
 import { aiStatus } from '@/lib/ai/config';
 
@@ -14,7 +13,9 @@ export const runtime = 'nodejs';
 async function handle(force: boolean) {
   const s = await getSession();
   if (!s) return Response.json({ status: 'error', message: 'Sign in first.' }, { status: 401 });
-  if (!may(s, 'ai.assistant')) return Response.json({ status: 'error', message: 'Your role cannot use AI briefings.' }, { status: 403 });
+  // ai.executive_briefing, not ai.assistant: a block officer may chat with the assistant but does
+  // not get the executive briefing (see mayReadBriefing).
+  if (!mayReadBriefing(s)) return Response.json({ status: 'error', message: BRIEFING_REFUSAL }, { status: 403 });
   if (!aiStatus().configured) {
     return Response.json({ status: 'unconfigured', message: 'No model API key is configured on the server, so no briefing can be generated. Every figure on this page is still computed from the records.' });
   }

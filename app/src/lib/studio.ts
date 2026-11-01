@@ -155,6 +155,14 @@ export function matchForCase(s: Session, caseId: string): { caseTitle: string; f
 // ---------------------------------------------------------------- what-if feasibility
 export interface Constraints {
   schools: number;
+  /**
+   * Counts from the plan's own schools (UDISE+ enrolment of the case's class, teachers in
+   * position, composite schools), when known. Without them a per-child cost assumes 30 children
+   * a school and a per-teacher cost 2 teachers a school, and says so.
+   */
+  children?: number | null;
+  teachers?: number | null;
+  compositeSchools?: number | null;
   budgetInr: number | null;
   teachersAvailable: number | null;
   weeksAvailable: number | null;
@@ -172,19 +180,32 @@ export interface FeasibilityCheck { key: string; label: string; status: 'ok' | '
  */
 export function feasibility(iv: Intervention, c: Constraints): { checks: FeasibilityCheck[]; totalCost: number | null; verdict: 'feasible' | 'at_risk' | 'not_feasible' } {
   const checks: FeasibilityCheck[] = [];
-  const unit = iv.cost_basis.unit;
+  const cb = iv.cost_basis;
+  const unit = cb.unit;
   const perSchool = /per school/.test(unit);
   const perCase = /per case/.test(unit);
   const perTeacher = /per teacher/.test(unit);
-  const totalCost = perSchool ? iv.cost_basis.amount_inr * c.schools
-    : perCase ? iv.cost_basis.amount_inr
-    : perTeacher ? iv.cost_basis.amount_inr * c.schools * 2
-    : iv.cost_basis.amount_inr;
+  const perChild = /per child/.test(unit);
+  const composite = Math.min(c.schools, Math.max(0, c.compositeSchools ?? 0));
+  const children = c.children ?? c.schools * 30;
+  const teachers = c.teachers ?? c.schools * 2;
+  const totalCost = perSchool ? cb.amount_inr * (c.schools - composite) + (cb.amount_composite_inr ?? cb.amount_inr) * composite
+    : perCase ? cb.amount_inr
+    : perTeacher ? cb.amount_inr * teachers
+    : perChild ? cb.amount_inr * children
+    : cb.amount_inr;
+  const real = !cb.illustrative && !!cb.citation;
+  const basisText = real
+    ? `UP PAB 2025-26 ${cb.basis === 'pab' ? 'unit cost' : 'rate from the nearest line'} (PDF p. ${cb.citation!.pdf_page})`
+    : 'Illustrative cost';
+  const countText = perTeacher ? (c.teachers != null ? `, ${teachers} teachers in position (UDISE+)` : ', assuming 2 teachers per school')
+    : perChild ? (c.children != null ? `, ${children} children in the class (UDISE+ enrolment)` : ', assuming 30 children per school')
+    : perSchool && composite ? `, ${composite} composite school${composite === 1 ? '' : 's'}` : '';
 
-  if (c.budgetInr === null) checks.push({ key: 'budget', label: 'Budget', status: 'unknown', detail: `Illustrative cost ₹${totalCost.toLocaleString('en-IN')} (${unit}${perTeacher ? ', assuming 2 teachers per school' : ''}). No budget entered.` });
+  if (c.budgetInr === null) checks.push({ key: 'budget', label: 'Budget', status: 'unknown', detail: `${basisText} ₹${totalCost.toLocaleString('en-IN')} (${unit}${countText}). No budget entered.` });
   else if (totalCost <= c.budgetInr) checks.push({ key: 'budget', label: 'Budget', status: 'ok', detail: `₹${totalCost.toLocaleString('en-IN')} fits within ₹${c.budgetInr.toLocaleString('en-IN')}.` });
   else {
-    const affordable = perSchool && iv.cost_basis.amount_inr > 0 ? Math.floor(c.budgetInr / iv.cost_basis.amount_inr) : 0;
+    const affordable = perSchool && cb.amount_inr > 0 ? Math.floor(c.budgetInr / cb.amount_inr) : 0;
     checks.push({ key: 'budget', label: 'Budget', status: affordable > 0 ? 'warn' : 'fail', detail: `Needs ₹${totalCost.toLocaleString('en-IN')}; budget is ₹${c.budgetInr.toLocaleString('en-IN')}.${affordable > 0 ? ` Covers ${affordable} of ${c.schools} schools — the rest would need a second phase.` : ''}` });
   }
 

@@ -18,13 +18,13 @@ export function ReportView({ r, snapshotId }: { r: BuiltReport; snapshotId?: str
           <div className="flex items-center gap-3">
             <Logo size={34} />
             <div>
-              <p className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-ink-faint">Karyavahi · {snapshotId ? `Snapshot ${snapshotId}` : 'Preview — not saved'}</p>
-              <h2 className="text-[24px] font-semibold leading-tight tracking-tight text-ink">{r.title}</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-faint">Karyavahi · {snapshotId ? `Snapshot ${snapshotId}` : 'Preview — not saved'}</p>
+              <h2 className="text-2xl font-semibold leading-tight tracking-tight text-ink">{r.title}</h2>
             </div>
           </div>
           <span className="chip shrink-0 border-warn/30 bg-warn-light text-warn">Fictional demo data</span>
         </div>
-        <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 text-[12.5px] sm:grid-cols-4">
+        <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
           <div><dt className="label">Scope</dt><dd className="text-ink">{r.scope}</dd></div>
           <div><dt className="label">Period</dt><dd className="tnum text-ink">{fmtDate(r.period.from)} – {fmtDate(r.period.to)}</dd></div>
           <div><dt className="label">Generated</dt><dd className="tnum text-ink">{fmtDate(r.generatedAt, true)}</dd></div>
@@ -38,8 +38,8 @@ export function ReportView({ r, snapshotId }: { r: BuiltReport; snapshotId?: str
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {r.summary.map((s) => (
               <div key={s.label} className="rounded-lg border border-line px-3 py-2">
-                <dt className="text-[11.5px] leading-tight text-ink-faint">{s.label}</dt>
-                <dd className="tnum mt-0.5 text-[20px] font-semibold text-ink">{s.value}</dd>
+                <dt className="text-xs leading-tight text-ink-faint">{s.label}</dt>
+                <dd className="tnum mt-0.5 text-xl font-semibold text-ink">{s.value}</dd>
               </div>
             ))}
           </dl>
@@ -48,11 +48,11 @@ export function ReportView({ r, snapshotId }: { r: BuiltReport; snapshotId?: str
 
       {r.sections.map((sec) => (
         <section key={sec.title} className="border-b border-line px-6 py-5 sm:px-10 print:break-inside-auto">
-          <h3 className="text-[15px] font-semibold text-ink">{sec.title} <span className="font-normal text-ink-faint">({sec.rows.length})</span></h3>
-          {sec.note ? <p className="mt-0.5 text-[12.5px] text-ink-soft">{sec.note}</p> : null}
-          {sec.rows.length === 0 ? <p className="mt-2 text-[13px] text-ink-faint">No records.</p> : (
+          <h3 className="text-md font-semibold text-ink">{sec.title} <span className="font-normal text-ink-faint">({sec.rows.length})</span></h3>
+          {sec.note ? <p className="mt-0.5 text-sm text-ink-soft">{sec.note}</p> : null}
+          {sec.rows.length === 0 ? <p className="mt-2 text-sm text-ink-faint">No records.</p> : (
             <div className="mt-3 overflow-x-auto rounded-lg border border-line">
-              <table className="table text-[12.5px]">
+              <table className="table text-sm">
                 <thead><tr>{sec.columns.map((c) => <th key={c.key}>{c.label}</th>)}</tr></thead>
                 <tbody>
                   {sec.rows.slice(0, 300).map((row, i) => (
@@ -60,13 +60,13 @@ export function ReportView({ r, snapshotId }: { r: BuiltReport; snapshotId?: str
                   ))}
                 </tbody>
               </table>
-              {sec.rows.length > 300 ? <p className="border-t border-line px-3 py-2 text-[12px] text-ink-faint">Showing 300 of {sec.rows.length}. The CSV and Excel exports contain every row.</p> : null}
+              {sec.rows.length > 300 ? <p className="border-t border-line px-3 py-2 text-xs text-ink-faint">Showing 300 of {sec.rows.length}. The CSV and Excel exports contain every row.</p> : null}
             </div>
           )}
         </section>
       ))}
 
-      <footer className="space-y-1.5 px-6 py-5 text-[12px] text-ink-soft sm:px-10">
+      <footer className="space-y-1.5 px-6 py-5 text-xs text-ink-soft sm:px-10">
         <p className="font-semibold text-ink">Limitations and caveats</p>
         <ul className="list-disc space-y-0.5 pl-5">{r.caveats.map((c) => <li key={c}>{c}</li>)}</ul>
         <p className="pt-2 font-semibold uppercase tracking-wide text-warn">{r.disclaimer}</p>

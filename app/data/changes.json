@@ -1,0 +1,20 @@
+{
+  "about": "Improvements made to Karyavahi because of what users told us in testing sessions and through the in-app feedback. Shown at /changes. How to add an entry: docs/user-testing/analysis.md. Paraphrase what people said, name roles not people, and never invent feedback.",
+  "entries": [
+    {
+      "id": "CHG-000",
+      "date": "2026-11-01",
+      "placeholder": true,
+      "said": "No user-testing sessions have been run yet, so there is no user feedback to report.",
+      "said_hi": "अभी तक कोई उपयोगकर्ता परीक्षण सत्र नहीं हुआ है, इसलिए बताने के लिए कोई उपयोगकर्ता सुझाव नहीं है।",
+      "who": "Nobody yet",
+      "who_hi": "अभी कोई नहीं",
+      "roles": [],
+      "changed": "This page fills as testing happens. Each entry will say what users said (paraphrased), which role said it, what we changed, and link to the page that changed. Until then, you can tell us what to improve with the Feedback button at the top of every page.",
+      "changed_hi": "परीक्षण होने के साथ यह पृष्ठ भरता जाएगा। हर प्रविष्टि में होगा कि उपयोगकर्ताओं ने क्या कहा (अपने शब्दों में), किस भूमिका ने कहा, हमने क्या बदला, और बदले गए पृष्ठ का लिंक। तब तक, हर पृष्ठ के ऊपर दिए \"सुझाव दें\" बटन से बताइए कि क्या सुधारें।",
+      "link": null,
+      "feedback_ids": [],
+      "session_refs": []
+    }
+  ]
+}

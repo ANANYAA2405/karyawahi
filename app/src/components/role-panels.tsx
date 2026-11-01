@@ -12,7 +12,8 @@ import { SEV_META, type Sev } from '@/lib/sev';
 
 /** Panels composed into the role dashboards. Server components; data is scoped per session. */
 
-export function ComplaintsPanel({ s, mode }: { s: Session; mode: 'respond' | 'mine' }) {
+export function ComplaintsPanel({ s, mode, lang = 'en' }: { s: Session; mode: 'respond' | 'mine'; lang?: 'en' | 'hi' }) {
+  const L = (en: string, hi: string) => (lang === 'hi' ? hi : en);
   const list = listComplaints(s, { queue: mode === 'respond' ? 'mine' : 'submitted_by_me', limit: 6 });
   const counts = queueCounts(s);
   const names = userNames(list.flatMap((c) => [c.reporter_user_id, c.assigned_user_id ?? '']));
@@ -21,24 +22,24 @@ export function ComplaintsPanel({ s, mode }: { s: Session; mode: 'respond' | 'mi
     <section className="card overflow-hidden" aria-labelledby={`cp-${mode}`}>
       <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3.5 sm:px-5">
         <div>
-          <h2 id={`cp-${mode}`} className="text-[16px] font-semibold tracking-tight text-ink">{mode === 'respond' ? 'Complaints requiring your response' : 'Your complaints'}</h2>
-          <p className="text-[12.5px] text-ink-faint">{mode === 'respond' ? `${counts.mine} assigned to you · ${counts.overdue} overdue in your view · ${counts.escalated} escalated` : 'Track what you raised and confirm resolutions.'}</p>
+          <h2 id={`cp-${mode}`} className="text-md font-semibold tracking-tight text-ink">{mode === 'respond' ? L('Complaints requiring your response', 'आपके उत्तर की प्रतीक्षा में शिकायतें') : L('Your complaints', 'आपकी शिकायतें')}</h2>
+          <p className="text-sm text-ink-faint">{mode === 'respond' ? L(`${counts.mine} assigned to you · ${counts.overdue} overdue in your view · ${counts.escalated} escalated`, `${counts.mine} आपको सौंपी गईं · ${counts.overdue} विलंबित · ${counts.escalated} आगे भेजी गईं`) : L('Track what you raised and confirm resolutions.', 'आपने जो दर्ज किया उसे देखें और समाधान की पुष्टि करें।')}</p>
         </div>
         <div className="flex gap-2">
-          {can(s, 'create_complaint') ? <Link href="/complaints/new" className="btn-quiet btn-sm"><Icon name="plus" size={14} />Raise</Link> : null}
-          <Link href={`/complaints?queue=${mode === 'respond' ? 'mine' : 'submitted_by_me'}`} className="btn-quiet btn-sm">All<Icon name="arrow-right" size={14} /></Link>
+          {can(s, 'create_complaint') ? <Link href="/complaints/new" className="btn-quiet btn-sm"><Icon name="plus" size={14} />{L('Raise', 'दर्ज करें')}</Link> : null}
+          <Link href={`/complaints?queue=${mode === 'respond' ? 'mine' : 'submitted_by_me'}`} className="btn-quiet btn-sm">{L('All', 'सभी')}<Icon name="arrow-right" size={14} /></Link>
         </div>
       </header>
-      {list.length === 0 ? <p className="px-5 py-8 text-center text-[13.5px] text-ink-faint">{mode === 'respond' ? 'Nothing is waiting on you.' : 'You have not raised any complaints.'}</p> : (
+      {list.length === 0 ? <p className="px-5 py-8 text-center text-sm text-ink-faint">{mode === 'respond' ? L('Nothing is waiting on you.', 'आप पर कुछ लंबित नहीं।') : L('You have not raised any complaints.', 'आपने कोई शिकायत दर्ज नहीं की है।')}</p> : (
         <ul className="divide-y divide-line">
           {list.map((c) => (
             <li key={c.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 sm:px-5">
               <div className="min-w-0">
-                <Link href={`/complaints/${c.id}`} className="text-[14px] font-medium text-ink hover:text-brand">{c.title}</Link>
-                <p className="text-[12px] text-ink-faint"><span className="font-mono">{c.id}</span> · {cats.get(c.category_key)} · {mode === 'respond' ? `from ${names.get(c.reporter_user_id)}` : `with ${names.get(c.assigned_user_id ?? '') ?? '—'}`}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5"><ComplaintStatus status={c.status} /><PriorityChip p={c.priority} />{c.confidentiality === 'restricted' ? <span className="chip border-crit/30 bg-crit-light text-crit">Restricted</span> : null}<SlaChip c={c} /></div>
+                <Link href={`/complaints/${c.id}`} className="text-base font-medium text-ink hover:text-brand">{c.title}</Link>
+                <p className="text-xs text-ink-faint"><span className="font-mono">{c.id}</span> · {cats.get(c.category_key)} · {mode === 'respond' ? `${L('from', 'द्वारा')} ${names.get(c.reporter_user_id)}` : `${L('with', 'पास:')} ${names.get(c.assigned_user_id ?? '') ?? '—'}`}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5"><ComplaintStatus status={c.status} lang={lang} /><PriorityChip p={c.priority} lang={lang} />{c.confidentiality === 'restricted' ? <span className="chip border-crit/30 bg-crit-light text-crit">{L('Restricted', 'गोपनीय')}</span> : null}<SlaChip c={c} lang={lang} /></div>
               </div>
-              <Link href={`/complaints/${c.id}`} className="btn-quiet btn-sm shrink-0">{mode === 'respond' ? 'Respond' : 'Open'}</Link>
+              <Link href={`/complaints/${c.id}`} className="btn-quiet btn-sm shrink-0">{mode === 'respond' ? L('Respond', 'उत्तर दें') : L('Open', 'खोलें')}</Link>
             </li>
           ))}
         </ul>
@@ -47,14 +48,15 @@ export function ComplaintsPanel({ s, mode }: { s: Session; mode: 'respond' | 'mi
   );
 }
 
-export function MapPanel({ title = 'Your area on the map', height = 320 }: { title?: string; height?: number }) {
+export function MapPanel({ title = 'Your area on the map', height = 320, lang = 'en' }: { title?: string; height?: number; lang?: 'en' | 'hi' }) {
+  const L = (en: string, hi: string) => (lang === 'hi' ? hi : en);
   return (
     <section className="card overflow-hidden">
       <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3.5 sm:px-5">
-        <div><h2 className="text-[16px] font-semibold tracking-tight text-ink">{title}</h2><p className="text-[12.5px] text-ink-faint">Opens at your own scope. Click an area to inspect it.</p></div>
-        <Link href="/hotspots" className="btn-quiet btn-sm">Open map<Icon name="arrow-right" size={14} /></Link>
+        <div><h2 className="text-md font-semibold tracking-tight text-ink">{title}</h2><p className="text-sm text-ink-faint">{L('Opens at your own scope. Click an area to inspect it.', 'आपके अपने क्षेत्र पर खुलता है। जानकारी के लिए क्षेत्र पर क्लिक करें।')}</p></div>
+        <Link href="/hotspots" className="btn-quiet btn-sm">{L('Open map', 'नक्शा खोलें')}<Icon name="arrow-right" size={14} /></Link>
       </header>
-      <div className="p-3"><Suspense fallback={<div className="skeleton w-full" style={{ height }} />}><GeoMap compact height={height} /></Suspense></div>
+      <div className="p-3"><Suspense fallback={<div className="skeleton w-full" style={{ height }} />}><GeoMap compact height={height} lang={lang} /></Suspense></div>
     </section>
   );
 }
@@ -67,7 +69,7 @@ export function PerformanceTable({ s }: { s: Session }) {
   return (
     <section className="card overflow-hidden" aria-labelledby="perf-title">
       <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3.5 sm:px-5">
-        <div><h2 id="perf-title" className="text-[16px] font-semibold tracking-tight text-ink">{label} performance</h2><p className="text-[12.5px] text-ink-faint">{pair ? `${pair.prev.code} → ${pair.curr.code}` : ''} · ranked by critical cases, then hot sub-areas, then overdue work</p></div>
+        <div><h2 id="perf-title" className="text-md font-semibold tracking-tight text-ink">{label} performance</h2><p className="text-sm text-ink-faint">{pair ? `${pair.prev.code} → ${pair.curr.code}` : ''} · ranked by critical cases, then hot sub-areas, then overdue work</p></div>
         <Link href="/hotspots?view=list" className="btn-quiet btn-sm">Details<Icon name="arrow-right" size={14} /></Link>
       </header>
       <div className="overflow-x-auto">
@@ -77,7 +79,7 @@ export function PerformanceTable({ s }: { s: Session }) {
             {rows.map((u) => (
               <tr key={u.id}>
                 <td><Link href={`/hotspots?plevel=${u.level}&parent=${u.id}`} className="font-medium text-ink hover:text-brand">{u.name}</Link></td>
-                <td><span className={`inline-flex items-center gap-1.5 text-[12.5px] ${SEV_META[u.severity as Sev].text}`}><span className={`h-2.5 w-2.5 rounded-sm ${SEV_META[u.severity as Sev].dot}`} />{SEV_META[u.severity as Sev].label}{u.relPp !== null && u.severity !== 'insufficient' ? ` · ${u.relPp > 0 ? '+' : ''}${u.relPp} pp` : ''}</span></td>
+                <td><span className={`inline-flex items-center gap-1.5 text-sm ${SEV_META[u.severity as Sev].text}`}><span className={`h-2.5 w-2.5 rounded-sm ${SEV_META[u.severity as Sev].dot}`} />{SEV_META[u.severity as Sev].label}{u.relPp !== null && u.severity !== 'insufficient' ? ` · ${u.relPp > 0 ? '+' : ''}${u.relPp} pp` : ''}</span></td>
                 <td className={`tnum text-right ${u.hotChildren ? 'font-medium text-crit' : ''}`}>{u.hotChildren}</td>
                 <td className="tnum text-right">{u.openCases}</td>
                 <td className={`tnum text-right ${u.criticalCases ? 'text-crit' : ''}`}>{u.criticalCases}</td>
@@ -97,15 +99,15 @@ export function EscalationsPanel({ s }: { s: Session }) {
   return (
     <section className="card overflow-hidden">
       <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-        <h2 className="text-[15px] font-semibold text-ink">Escalated issues</h2>
-        <Link href="/complaints?queue=escalated" className="link text-[12.5px]">All</Link>
+        <h2 className="text-md font-semibold text-ink">Escalated issues</h2>
+        <Link href="/complaints?queue=escalated" className="link text-sm">All</Link>
       </header>
-      {esc.length === 0 ? <p className="px-4 py-6 text-[13px] text-ink-faint">No escalated complaints in your view.</p> : (
+      {esc.length === 0 ? <p className="px-4 py-6 text-sm text-ink-faint">No escalated complaints in your view.</p> : (
         <ul className="divide-y divide-line">
           {esc.map((c) => (
             <li key={c.id} className="px-4 py-2.5">
-              <Link href={`/complaints/${c.id}`} className="text-[13.5px] font-medium text-ink hover:text-brand">{c.title}</Link>
-              <p className="text-[12px] text-ink-faint">{c.id} · escalated ×{c.escalation_level} · now with {names.get(c.assigned_user_id ?? '')}</p>
+              <Link href={`/complaints/${c.id}`} className="text-sm font-medium text-ink hover:text-brand">{c.title}</Link>
+              <p className="text-xs text-ink-faint">{c.id} · escalated ×{c.escalation_level} · now with {names.get(c.assigned_user_id ?? '')}</p>
             </li>
           ))}
         </ul>

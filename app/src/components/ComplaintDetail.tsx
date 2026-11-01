@@ -39,8 +39,8 @@ export function ComplaintDetail({ session, id, layout = 'page' }: { session: Ses
     <header className={drawer ? 'border-b border-line px-5 py-4' : 'card p-5 sm:p-6'}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[12px] font-medium text-ink-faint"><Mono>{c.id}</Mono> · {cat?.label ?? c.category_key} · {where}</p>
-          <h1 className={`mt-0.5 font-semibold leading-tight tracking-tight text-ink ${drawer ? 'text-[19px]' : 'text-[26px]'}`}>{c.title}</h1>
+          <p className="text-xs font-medium text-ink-faint"><Mono>{c.id}</Mono> · {cat?.label ?? c.category_key} · {where}</p>
+          <h1 className={`mt-0.5 font-semibold leading-tight tracking-tight text-ink ${drawer ? 'text-lg' : 'text-2xl'}`}>{c.title}</h1>
         </div>
         <div className="flex flex-wrap gap-1.5">
           <ComplaintStatus status={c.status} /><PriorityChip p={c.priority} />
@@ -48,22 +48,22 @@ export function ComplaintDetail({ session, id, layout = 'page' }: { session: Ses
           {c.provenance === 'synthetic_demo' ? <span className="chip border-warn/30 bg-warn-light text-warn">Fictional</span> : null}
         </div>
       </div>
-      <dl className={`mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-line pt-4 text-[13px] ${drawer ? '' : 'sm:grid-cols-4'}`}>
-        <div><dt className="label">Raised by</dt><dd className="mt-0.5 font-medium text-ink">{names.get(c.reporter_user_id)}<span className="block text-[11.5px] font-normal uppercase text-ink-faint">{c.reporter_role}</span></dd></div>
-        <div><dt className="label">Responsible authority</dt><dd className="mt-0.5 font-medium text-ink">{names.get(c.assigned_user_id ?? '') ?? '—'}<span className="block text-[11.5px] font-normal uppercase text-ink-faint">{c.assigned_role}{c.escalation_level ? ` · escalated ×${c.escalation_level}` : ''}</span></dd></div>
+      <dl className={`mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-line pt-4 text-sm ${drawer ? '' : 'sm:grid-cols-4'}`}>
+        <div><dt className="label">Raised by</dt><dd className="mt-0.5 font-medium text-ink">{names.get(c.reporter_user_id)}<span className="block text-xs font-normal uppercase text-ink-faint">{c.reporter_role}</span></dd></div>
+        <div><dt className="label">Responsible authority</dt><dd className="mt-0.5 font-medium text-ink">{names.get(c.assigned_user_id ?? '') ?? '—'}<span className="block text-xs font-normal uppercase text-ink-faint">{c.assigned_role}{c.escalation_level ? ` · escalated ×${c.escalation_level}` : ''}</span></dd></div>
         <div><dt className="label">Submitted</dt><dd className="mt-0.5 font-medium text-ink">{fmtDate(c.created_at)}</dd></div>
-        <div><dt className="label">Expected response</dt><dd className={`mt-0.5 font-medium ${sla.tone === 'crit' ? 'text-crit' : sla.tone === 'warn' ? 'text-warn' : 'text-ink'}`}>{expected ?? 'Not open'}{sla.label ? <span className="block text-[11.5px] font-normal">{sla.label}</span> : null}</dd></div>
+        <div><dt className="label">Expected response</dt><dd className={`mt-0.5 font-medium ${sla.tone === 'crit' ? 'text-crit' : sla.tone === 'warn' ? 'text-warn' : 'text-ink'}`}>{expected ?? 'Not open'}{sla.label ? <span className="block text-xs font-normal">{sla.label}</span> : null}</dd></div>
       </dl>
-      <p className="mt-4 rounded-lg bg-paper-sunk px-3 py-2 text-[12.5px] text-ink-soft"><Icon name="info" size={13} className="mr-1 inline" />{RELATION_LABEL[relation]}.</p>
+      <p className="mt-4 rounded-lg bg-paper-sunk px-3 py-2 text-sm text-ink-soft"><Icon name="info" size={13} className="mr-1 inline" />{RELATION_LABEL[relation]}.</p>
     </header>
   );
 
   const description = (
     <section className={drawer ? 'border-b border-line px-5 py-4' : 'card p-5'}>
       <h2 className="sub-title">Description</h2>
-      <p className="mt-1.5 whitespace-pre-wrap text-[14px] leading-relaxed text-ink-soft">{c.description}</p>
-      {c.resolution_summary ? <div className="mt-4 rounded-lg border border-good/30 bg-good-light/60 p-3"><p className="text-[12.5px] font-semibold text-good">Resolution</p><p className="text-[13.5px] text-ink">{c.resolution_summary}</p></div> : null}
-      {c.case_id ? <p className="mt-3 text-[13px]">Linked case: <Link href={`/cases/${c.case_id}`} className="link">{c.case_id}</Link></p> : null}
+      <p className="mt-1.5 whitespace-pre-wrap text-base leading-relaxed text-ink-soft">{c.description}</p>
+      {c.resolution_summary ? <div className="mt-4 rounded-lg border border-good/30 bg-good-light/60 p-3"><p className="text-sm font-semibold text-good">Resolution</p><p className="text-sm text-ink">{c.resolution_summary}</p></div> : null}
+      {c.case_id ? <p className="mt-3 text-sm">Linked case: <Link href={`/cases/${c.case_id}`} className="link">{c.case_id}</Link></p> : null}
     </section>
   );
 
@@ -71,7 +71,7 @@ export function ComplaintDetail({ session, id, layout = 'page' }: { session: Ses
     <section className={drawer ? 'border-b border-line bg-paper-sunk/50 px-5 py-4' : 'card p-4'}>
       <h2 className="sub-title">Next step</h2>
       {acts.length === 0 && !canEscalate ? (
-        <p className="mt-1.5 text-[13px] text-ink-soft">{relation === 'oversight' || relation === 'auditor' ? 'Read-only: only the assigned authority can act on this complaint.' : relation === 'past_handler' ? 'This complaint has moved on from you.' : STATUS[c.status]?.open ? 'Waiting on the responsible office.' : 'Nothing further to do.'}</p>
+        <p className="mt-1.5 text-sm text-ink-soft">{relation === 'oversight' || relation === 'auditor' ? 'Read-only: only the assigned authority can act on this complaint.' : relation === 'past_handler' ? 'This complaint has moved on from you.' : STATUS[c.status]?.open ? 'Waiting on the responsible office.' : 'Nothing further to do.'}</p>
       ) : (
         <div className="mt-2 space-y-2.5">
           {acts.map((t) => t.needsNote ? (
@@ -94,10 +94,10 @@ export function ComplaintDetail({ session, id, layout = 'page' }: { session: Ses
       )}
       {relation === 'assignee' && !c.case_id ? (
         <div className="mt-4 border-t border-line pt-3">
-          <p className="text-[13px] font-medium text-ink">Link to a learning case</p>
-          <p className="mt-0.5 text-[12px] text-ink-faint">A complaint stays separate from a case; linking records the relationship.</p>
+          <p className="text-sm font-medium text-ink">Link to a learning case</p>
+          <p className="mt-0.5 text-xs text-ink-faint">A complaint stays separate from a case; linking records the relationship.</p>
           <ActionForm action={linkComplaintCaseAction} hidden={{ complaint_id: c.id }} label="Link case" tone="quiet" className="mt-2">
-            <input name="case_id" required placeholder="CASE-0184" className="input mb-2 h-9 text-[13px]" pattern="CASE-\d{4}" />
+            <input name="case_id" required placeholder="CASE-0184" className="input mb-2 h-9 text-sm" pattern="CASE-\d{4}" />
           </ActionForm>
         </div>
       ) : null}
@@ -108,7 +108,7 @@ export function ComplaintDetail({ session, id, layout = 'page' }: { session: Ses
     <section className={drawer ? 'px-5 py-4' : 'card overflow-hidden'} aria-label="Timeline">
       <header className={drawer ? 'mb-3' : 'border-b border-line px-5 py-3'}>
         <h2 className="sub-title">Timeline</h2>
-        <p className="text-[12px] text-ink-faint">{internal ? 'Includes internal notes (shaded), which the complainant does not see.' : 'Updates from the responsible office.'} Every step is also in the audit chain.</p>
+        <p className="text-xs text-ink-faint">{internal ? 'Includes internal notes (shaded), which the complainant does not see.' : 'Updates from the responsible office.'} Every step is also in the audit chain.</p>
       </header>
       <ol className={drawer ? '' : 'px-5 py-4'}>
         {events.map((e, i) => (
@@ -116,13 +116,13 @@ export function ComplaintDetail({ session, id, layout = 'page' }: { session: Ses
             {i < events.length - 1 ? <span className="absolute left-[5px] top-4 h-full w-px bg-line" aria-hidden /> : null}
             <span className={`relative mt-1.5 h-[11px] w-[11px] shrink-0 rounded-full ring-2 ring-white ${e.kind === 'escalated' ? 'bg-crit' : e.kind === 'resolved' || e.kind === 'closed' ? 'bg-good' : 'bg-navy-300'}`} />
             <div className="min-w-0">
-              <p className="text-[13.5px] text-ink">
+              <p className="text-sm text-ink">
                 <span className="font-medium">{e.kind === 'routed' ? 'Routing rule applied' : e.to_status ? (STATUS[e.to_status]?.label ?? e.to_status) : e.kind.replace(/_/g, ' ')}</span>
                 {e.assigned_to ? <span className="text-ink-soft"> → {names.get(e.assigned_to) ?? e.assigned_to}</span> : null}
                 {e.internal ? <span className="ml-1.5 chip border-line-strong bg-white text-ink-faint">internal</span> : null}
               </p>
-              {e.note ? <p className="text-[13px] text-ink-soft">{e.note}</p> : null}
-              <p className="text-[11.5px] text-ink-faint">{e.actor_user_id ? names.get(e.actor_user_id) ?? e.actor_label : e.actor_label} · {fmtDate(e.ts, true)}</p>
+              {e.note ? <p className="text-sm text-ink-soft">{e.note}</p> : null}
+              <p className="text-xs text-ink-faint">{e.actor_user_id ? names.get(e.actor_user_id) ?? e.actor_label : e.actor_label} · {fmtDate(e.ts, true)}</p>
             </div>
           </li>
         ))}
@@ -131,8 +131,8 @@ export function ComplaintDetail({ session, id, layout = 'page' }: { session: Ses
   );
 
   const rules = (
-    <section className={drawer ? 'border-t border-line px-5 py-4 text-[12.5px] text-ink-soft' : 'card p-4 text-[12.5px] text-ink-soft'}>
-      <h2 className="mb-1 text-[14px] font-semibold text-ink">How this complaint moves</h2>
+    <section className={drawer ? 'border-t border-line px-5 py-4 text-sm text-ink-soft' : 'card p-4 text-sm text-ink-soft'}>
+      <h2 className="mb-1 text-base font-semibold text-ink">How this complaint moves</h2>
       <ul className="space-y-1">
         <li>• Acknowledge by {fmtDate(c.ack_due)}; otherwise it escalates automatically.</li>
         <li>• Resolve by {fmtDate(c.resolve_due)}; otherwise it escalates to the next designated authority.</li>

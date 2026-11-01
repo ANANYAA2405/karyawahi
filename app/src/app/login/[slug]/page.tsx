@@ -44,7 +44,7 @@ export default async function RoleLogin({ params }: { params: Promise<{ slug: st
       <nav aria-label="Roles" className="mb-5 flex flex-wrap gap-1.5">
         {Object.keys(SLUG_ROLES).map((k) => (
           <Link key={k} href={`/login/${k}`} aria-current={k === slug ? 'page' : undefined}
-            className={`rounded-full border px-3 py-1 text-[12.5px] ${k === slug ? 'border-navy bg-navy text-white' : 'border-line-strong bg-white text-ink-soft hover:text-ink'}`}>
+            className={`rounded-full border px-3 py-1 text-sm ${k === slug ? 'border-navy bg-navy text-white' : 'border-line-strong bg-white text-ink-soft hover:text-ink'}`}>
             {pick(lang, ROLE_LABELS[SLUG_ROLES[k][0]].en, ROLE_LABELS[SLUG_ROLES[k][0]].hi).replace(/^Block Resource Coordinator$/, 'Resource coordinators')}
           </Link>
         ))}
@@ -65,11 +65,11 @@ export default async function RoleLogin({ params }: { params: Promise<{ slug: st
             <li key={a.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-medium text-ink">{a.full_name}</p>
+                  <p className="text-base font-medium text-ink">{a.full_name}</p>
                   <Pill>{scopeName(a.scope_type, a.scope_id)}</Pill>
                   {demo.has(a.id) ? <Pill tone="active">{pick(lang, 'Demo account', 'डेमो खाता')}</Pill> : null}
                 </div>
-                <p className="text-[12px] text-ink-faint">{a.email}</p>
+                <p className="text-xs text-ink-faint">{a.email}</p>
               </div>
               <form action="/api/sign-in" method="post">
                 <input type="hidden" name="user_id" value={a.id} />

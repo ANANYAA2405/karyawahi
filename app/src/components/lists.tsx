@@ -3,10 +3,12 @@ import type { Language } from '@domain/types';
 import type { Case, Task, Evidence, Finding } from '@/lib/cases';
 import { pick } from '@/lib/i18n';
 import { Empty, Mono, Delta, fmtDate, fmtPct, fmtInt } from './ui';
+import { GpsBadge } from './GpsBadge';
 import {
   StatusPill, SeverityPill, TaskStatusPill, EvidenceStatusPill, OutcomePill, Pill,
   OverduePill, EscalatedPill, CrossSourcePill, EvidenceTypeName, RoleName,
 } from './labels';
+import { EvidenceSummary } from './EvidenceSummary';
 
 /** Shared tables. Each row links to the record; none of them invent a number. */
 
@@ -42,7 +44,7 @@ export function CaseTable({
             <tr key={c.id}>
               <td className="max-w-sm">
                 <Link href={`/cases/${c.id}`} className="link font-medium">{c.title}</Link>
-                <p className="mt-0.5 text-[11.5px] text-ink-faint">
+                <p className="mt-0.5 text-xs text-ink-faint">
                   <Mono>{c.id}</Mono> · {pick(lang, 'Class', 'कक्षा')} {c.grade} ·{' '}
                   {g(look.competencies, c.competency_id)}
                   {c.reopen_count > 0 ? (
@@ -50,17 +52,17 @@ export function CaseTable({
                   ) : null}
                 </p>
               </td>
-              <td className="text-[13px]">
+              <td className="text-sm">
                 {g(look.clusters, c.cluster_id)}
-                {showBlock ? <span className="block text-[11.5px] text-ink-faint">{g(look.blocks, c.block_id)}</span> : null}
+                {showBlock ? <span className="block text-xs text-ink-faint">{g(look.blocks, c.block_id)}</span> : null}
               </td>
               <td><SeverityPill severity={c.severity} lang={lang} /></td>
               <td className="space-y-1">
                 <StatusPill status={c.status} lang={lang} />
                 {c.closure_type ? <OutcomePill category={c.closure_type} lang={lang} /> : null}
               </td>
-              <td className="text-[13px]">{g(look.users, c.owner_user_id)}</td>
-              <td className="tnum whitespace-nowrap text-[13px]">{fmtDate(c.due_date)}</td>
+              <td className="text-sm">{g(look.users, c.owner_user_id)}</td>
+              <td className="tnum whitespace-nowrap text-sm">{fmtDate(c.due_date, false, lang)}</td>
             </tr>
           ))}
         </tbody>
@@ -101,23 +103,23 @@ export function FindingTable({
         <tbody>
           {findings.map((f) => (
             <tr key={f.id}>
-              <td className="text-[13px]">
+              <td className="text-sm">
                 {f.case_id ? (
                   <Link href={`/cases/${f.case_id}`} className="link font-medium">{g(look.clusters, f.cluster_id)}</Link>
                 ) : (
                   <Link href={`/findings/${f.id}`} className="link font-medium">{g(look.clusters, f.cluster_id)}</Link>
                 )}
-                <span className="block text-[11.5px] text-ink-faint">{g(look.blocks, f.block_id)}</span>
+                <span className="block text-xs text-ink-faint">{g(look.blocks, f.block_id)}</span>
               </td>
-              <td className="text-[13px]">
+              <td className="text-sm">
                 {pick(lang, 'Class', 'कक्षा')} {f.grade} · {g(look.competencies, f.competency_id)}
               </td>
-              <td className="tnum whitespace-nowrap text-[13px]">
+              <td className="tnum whitespace-nowrap text-sm">
                 {fmtPct(f.prev_value_pct)} → <span className="font-medium">{fmtPct(f.curr_value_pct)}</span>
               </td>
               <td><Delta pp={f.relative_change_pp} /></td>
-              <td className="tnum text-[13px]">{f.z_score}</td>
-              <td className="tnum text-[13px] text-ink-soft">{fmtInt(f.n_curr)}</td>
+              <td className="tnum text-sm">{f.z_score}</td>
+              <td className="tnum text-sm text-ink-soft">{fmtInt(f.n_curr)}</td>
               <td>
                 {statusPill(f.status)}
                 {f.case_id ? <span className="ml-1"><Mono>{f.case_id}</Mono></span> : null}
@@ -158,22 +160,22 @@ export function TaskTable({
                   <Link href={`/tasks/${t.id}`} className="link">{pick(lang, t.title_en, t.title_hi)}</Link>
                   {t.cross_source ? <span className="ml-1.5"><CrossSourcePill lang={lang} /></span> : null}
                   {t.school_id ? (
-                    <p className="mt-0.5 text-[11.5px] text-ink-faint">{g(look.schools, t.school_id)}</p>
+                    <p className="mt-0.5 text-xs text-ink-faint">{g(look.schools, t.school_id)}</p>
                   ) : null}
                 </td>
                 {showCase ? (
-                  <td className="text-[12.5px]">
+                  <td className="text-sm">
                     <Link href={`/cases/${t.case_id}`} className="link"><Mono>{t.case_id}</Mono></Link>
                   </td>
                 ) : null}
-                <td className="text-[13px]">
+                <td className="text-sm">
                   {g(look.users, t.owner_user_id)}
-                  <span className="block text-[11.5px] text-ink-faint"><RoleName role={t.owner_role} lang={lang} /></span>
+                  <span className="block text-xs text-ink-faint"><RoleName role={t.owner_role} lang={lang} /></span>
                 </td>
-                <td className="text-[12.5px]">
+                <td className="text-sm">
                   {t.proof_count} × <EvidenceTypeName type={t.proof_type} lang={lang} />
                 </td>
-                <td className="tnum whitespace-nowrap text-[13px]">{fmtDate(t.due_date)}</td>
+                <td className="tnum whitespace-nowrap text-sm">{fmtDate(t.due_date, false, lang)}</td>
                 <td className="space-y-1">
                   <TaskStatusPill status={t.status} lang={lang} />
                   {t.is_overdue ? <OverduePill lang={lang} days={days} /> : null}
@@ -203,33 +205,22 @@ export function EvidenceList({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[13.5px] font-medium text-ink">
+                <span className="text-sm font-medium text-ink">
                   <EvidenceTypeName type={e.evidence_type} lang={lang} />
                 </span>
                 <EvidenceStatusPill status={e.status} lang={lang} />
-                {e.gps_status === 'outside_radius' ? (
-                  <Pill tone="warn">{pick(lang, 'GPS outside the school', 'GPS विद्यालय से बाहर')}</Pill>
-                ) : null}
+                <GpsBadge status={e.gps_status} distance={e.gps_distance_m} accuracy={e.gps_accuracy_m} lang={lang} />
               </div>
-              <p className="mt-1 text-[12.5px] text-ink-soft">
+              <p className="mt-1 text-sm text-ink-soft">
                 <Link href={`/cases/${e.case_id}`} className="link"><Mono>{e.case_id}</Mono></Link>
                 {' · '}
                 <Link href={`/tasks/${e.task_id}`} className="link"><Mono>{e.task_id}</Mono></Link>
                 {e.school_id ? <> · {g(look.schools, e.school_id)}</> : null}
                 {' · '}
                 {pick(lang, 'by', 'द्वारा')} {g(look.users, e.submitted_by)}{' '}
-                (<RoleName role={e.submitted_role} lang={lang} />) {fmtDate(e.submitted_at)}
+                (<RoleName role={e.submitted_role} lang={lang} />) {fmtDate(e.submitted_at, false, lang)}
               </p>
-              {Object.keys(e.summary).length > 0 ? (
-                <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[12.5px]">
-                  {Object.entries(e.summary).slice(0, 5).map(([k, v]) => (
-                    <div key={k} className="flex gap-1">
-                      <dt className="text-ink-faint">{k.replace(/_/g, ' ')}:</dt>
-                      <dd className="text-ink">{String(v)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : null}
+              <EvidenceSummary id={e.id} summary={e.summary} lang={lang} />
             </div>
             {children ? <div className="shrink-0 no-print">{children(e)}</div> : null}
           </div>

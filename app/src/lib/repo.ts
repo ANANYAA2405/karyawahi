@@ -1,5 +1,6 @@
 import 'server-only';
 import { all, one, j, bool, type Param } from './db';
+import { learningRows } from './learning-cache';
 import { and, schoolsPred, canSeeSchool, canSeeCase, staffEventsPred, type Pred } from './scope';
 import type { Session } from './session';
 import type {
@@ -295,7 +296,7 @@ export function clusterTrend(
   s: Session, clusterId: string, districtId: string, grade: number, competencyId: string,
 ): TrendPoint[] {
   const p = canSeeSchool(s, 'ar.school_id');
-  const rows = all<{
+  const rows = learningRows<{
     round_id: string; scope: string; assessed: number; proficient: number;
   }>(
     `select ar.round_id,
@@ -364,7 +365,7 @@ export function blockCompetencySnapshot(
   if (opts.districtId) { where.push('sc.district_id = ?'); params.push(opts.districtId); }
   const scopeSql = where.length > 0 ? `and ${where.join(' and ')}` : '';
 
-  const rows = all<{ round_id: string; competency_id: string; grade: number; assessed: number; proficient: number }>(
+  const rows = learningRows<{ round_id: string; competency_id: string; grade: number; assessed: number; proficient: number }>(
     `select ar.round_id, ar.competency_id, ar.grade,
             sum(ar.n_assessed) assessed, sum(ar.n_proficient) proficient
        from assessment_results ar join schools sc on sc.id = ar.school_id

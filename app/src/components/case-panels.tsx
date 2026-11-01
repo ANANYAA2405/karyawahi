@@ -6,6 +6,7 @@ import type {
 import type { TrendPoint } from '@/lib/repo';
 import { OUTCOME_NOTE } from '@domain/outcome';
 import { pick, FACTOR_LABEL } from '@/lib/i18n';
+import { GpsBadge } from './GpsBadge';
 import {
   Card, CardHead, Callout, Facts, Field, Empty, Mono, Delta, Bar,
   fmtPct, fmtDate, fmtInr, fmtInt, shortHash,
@@ -15,8 +16,11 @@ import {
   AiDrafted, OfficerWritten, Illustrative, Association, CrossSourcePill, OverduePill,
   EscalatedPill, EvidenceTypeName, FactorName, RoleName, EvidenceStrength,
 } from './labels';
+import { CostSource, costNote, type CostBasisLike } from './cost';
+import { OutcomeCalibrationNote } from './CalibrationNote';
 import { TrendChart, DivergingBars, EffectInterval, SlopeChart } from './charts';
 import { SERIES } from '@/lib/viz';
+import { EvidenceSummary } from './EvidenceSummary';
 
 /** The anatomy of a case, one panel per question an officer actually asks. */
 
@@ -86,11 +90,11 @@ export function FindingPanel({
         <Facts cols={4}>
           <Field label={pick(lang, 'Previous round', 'पिछला दौर')}>
             <span className="tnum">{fmtPct(finding.prev_value_pct)}</span>
-            <span className="ml-1 text-[12px] text-ink-faint">{nm(names.roundLabels, finding.prev_round_id)}</span>
+            <span className="ml-1 text-xs text-ink-faint">{nm(names.roundLabels, finding.prev_round_id)}</span>
           </Field>
           <Field label={pick(lang, 'This round', 'यह दौर')}>
             <span className="tnum font-semibold">{fmtPct(finding.curr_value_pct)}</span>
-            <span className="ml-1 text-[12px] text-ink-faint">{nm(names.roundLabels, finding.round_id)}</span>
+            <span className="ml-1 text-xs text-ink-faint">{nm(names.roundLabels, finding.round_id)}</span>
           </Field>
           <Field label={pick(lang, 'Change', 'बदलाव')}>
             <Delta pp={finding.change_pp} />
@@ -128,7 +132,7 @@ export function FindingPanel({
             <h3 className="h-section mb-1">
               {pick(lang, 'Which schools account for the drop', 'गिरावट के लिए कौन से विद्यालय')}
             </h3>
-            <p className="mb-2 text-[12.5px] leading-snug text-ink-soft">
+            <p className="mb-2 text-sm leading-snug text-ink-soft">
               {pick(
                 lang,
                 `Each school's share of the cluster's excess drop, weighted by students assessed. These ${finding.driver_schools.length} cover ${Math.round(finding.driver_schools.reduce((t, d) => t + d.contribution_share, 0) * 100)}% of it, and they are the schools the plan acts on.`,
@@ -190,10 +194,10 @@ export function FindingPanel({
               </tr>
             </tbody>
           </table>
-          <p className="mt-2 text-[12px] text-ink-faint">
+          <p className="mt-2 text-xs text-ink-faint">
             <Mono>{finding.id}</Mono> · {finding.detection_method} ·{' '}
             {pick(lang, 'settings', 'सेटिंग')} <Mono>{finding.settings_version_id}</Mono> ·{' '}
-            {pick(lang, 'detected', 'पहचान')} {fmtDate(finding.detected_at, true)}
+            {pick(lang, 'detected', 'पहचान')} {fmtDate(finding.detected_at, true, lang)}
           </p>
         </div>
       </div>
@@ -245,11 +249,11 @@ export function DiagnosisPanel({
           <ul className="space-y-2">
             {diagnosis.ranked_factors.map((f) => (
               <li key={f.factor} className="flex flex-wrap items-center gap-3">
-                <span className="min-w-[15rem] text-sm text-ink">
+                <span className="min-w-[15rem] text-base text-ink">
                   <FactorName factor={f.factor as keyof typeof FACTOR_LABEL} lang={lang} />
                 </span>
                 <Bar value={f.schools_flagged} max={f.of_driver_schools} tone={f.schools_flagged === f.of_driver_schools ? 'crit' : 'warn'} />
-                <span className="tnum text-[13px] font-medium text-ink">
+                <span className="tnum text-sm font-medium text-ink">
                   {f.schools_flagged} {pick(lang, 'of', 'में से')} {f.of_driver_schools}
                 </span>
               </li>
@@ -288,7 +292,7 @@ export function DiagnosisPanel({
                     <td>
                       <Mono>{o.source_table}</Mono>
                       {o.source_record_ids.length > 0 ? (
-                        <span className="ml-1 text-[11px] text-ink-faint">
+                        <span className="ml-1 text-2xs text-ink-faint">
                           {o.source_record_ids.slice(0, 2).join(', ')}
                           {o.source_record_ids.length > 2 ? ` +${o.source_record_ids.length - 2}` : ''}
                         </span>
@@ -304,28 +308,28 @@ export function DiagnosisPanel({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-md border border-pend/30 bg-pend-light p-3">
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <h3 className="text-[13px] font-semibold text-ink">{pick(lang, 'AI hypothesis', 'AI परिकल्पना')}</h3>
+              <h3 className="text-sm font-semibold text-ink">{pick(lang, 'AI hypothesis', 'AI परिकल्पना')}</h3>
               <AiDrafted lang={lang} model={diagnosis.ai_hypothesis_model} />
             </div>
-            <p className="text-[13px] leading-relaxed text-ink">{diagnosis.ai_hypothesis}</p>
-            <p className="mt-1.5 text-[11.5px] text-ink-soft">
+            <p className="text-sm leading-relaxed text-ink">{diagnosis.ai_hypothesis}</p>
+            <p className="mt-1.5 text-xs text-ink-soft">
               {pick(lang, 'Generated from the observations above. It carries no authority.', 'उपरोक्त अवलोकनों से तैयार। इसका कोई अधिकार नहीं।')}
             </p>
           </div>
           <div className="rounded-md border border-line bg-paper-sunk p-3">
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <h3 className="text-[13px] font-semibold text-ink">{pick(lang, "The officer's conclusion", 'अधिकारी का निष्कर्ष')}</h3>
+              <h3 className="text-sm font-semibold text-ink">{pick(lang, "The officer's conclusion", 'अधिकारी का निष्कर्ष')}</h3>
               {diagnosis.human_conclusion ? <OfficerWritten lang={lang} /> : null}
             </div>
             {diagnosis.human_conclusion ? (
               <>
-                <p className="text-[13px] leading-relaxed text-ink">{diagnosis.human_conclusion}</p>
-                <p className="mt-1.5 text-[11.5px] text-ink-soft">
+                <p className="text-sm leading-relaxed text-ink">{diagnosis.human_conclusion}</p>
+                <p className="mt-1.5 text-xs text-ink-soft">
                   {pick(lang, 'Recorded by', 'दर्ज किया')} {nm(names.users, diagnosis.human_conclusion_by)}
                 </p>
               </>
             ) : (
-              <p className="text-[13px] text-ink-faint">
+              <p className="text-sm text-ink-faint">
                 {pick(lang, 'Not written yet. The AI hypothesis is not a substitute for it.', 'अभी नहीं लिखा। AI परिकल्पना इसका विकल्प नहीं है।')}
               </p>
             )}
@@ -333,7 +337,7 @@ export function DiagnosisPanel({
           </div>
         </div>
 
-        <p className="text-[12px] leading-snug text-ink-faint">
+        <p className="text-xs leading-snug text-ink-faint">
           <Mono>{diagnosis.id}</Mono> · {diagnosis.method_note}
         </p>
       </div>
@@ -350,7 +354,7 @@ export function PlanPanel({
     duration_weeks: number; success_metric: string; required_evidence: string[];
     delivery_conditions: string[]; limitations: string[];
     evidence: { status: string; summary: string; source_title: string | null; source_url: string | null; effect_size_text: string | null };
-    cost_basis: { amount_inr: number; unit: string; note: string };
+    cost_basis: CostBasisLike;
   } | null;
   names: Names; lang: Language; children?: React.ReactNode;
 }) {
@@ -363,11 +367,15 @@ export function PlanPanel({
           'What will be done, in which schools, how success was defined before the work started, and who signed it off.',
           'क्या किया जाएगा, किन विद्यालयों में, सफलता की परिभाषा पहले से तय, और किसने स्वीकृत किया।',
         )}
-        right={currentPlan?.drafted_by === 'ai_draft' ? <AiDrafted lang={lang} model={currentPlan.ai_model} /> : null}
+        right={currentPlan?.drafted_by === 'ai_draft' ? <AiDrafted lang={lang} model={currentPlan.ai_model} />
+          : currentPlan?.drafted_by === 'officer' ? <OfficerWritten lang={lang} /> : null}
       />
 
       {!currentPlan ? (
-        <Empty>{pick(lang, 'No plan drafted yet.', 'अभी कोई योजना नहीं।')}</Empty>
+        <>
+          <Empty>{pick(lang, 'No plan drafted yet.', 'अभी कोई योजना नहीं।')}</Empty>
+          {children ? <div className="card-pad pt-0">{children}</div> : null}
+        </>
       ) : (
         <div className="card-pad space-y-4">
           <Facts cols={4}>
@@ -382,18 +390,18 @@ export function PlanPanel({
             </Field>
             <Field
               label={pick(lang, 'Estimated cost', 'अनुमानित लागत')}
-              hint={intervention?.cost_basis.note}
+              hint={currentPlan.cost_is_illustrative || !intervention ? pick(lang, 'Estimated when the plan was drafted, from an illustrative card figure.', 'योजना बनते समय एक उदाहरणार्थ आँकड़े से अनुमानित।') : costNote(intervention.cost_basis, lang)}
             >
               <span className="tnum">{fmtInr(currentPlan.estimated_cost_inr)}</span>{' '}
-              <Illustrative lang={lang} />
+              {currentPlan.cost_is_illustrative || !intervention ? <Illustrative lang={lang} /> : <CostSource cost={intervention.cost_basis} lang={lang} />}
             </Field>
           </Facts>
 
           <div>
             <h3 className="h-section mb-1">{pick(lang, 'Why this one', 'यही क्यों')}</h3>
-            <p className="text-[13.5px] leading-relaxed text-ink">{currentPlan.rationale}</p>
+            <p className="text-sm leading-relaxed text-ink">{currentPlan.rationale}</p>
             {currentPlan.alternatives.length > 0 ? (
-              <p className="mt-1.5 text-[12.5px] text-ink-soft">
+              <p className="mt-1.5 text-sm text-ink-soft">
                 {pick(lang, 'Alternatives considered:', 'अन्य विकल्प:')}{' '}
                 {currentPlan.alternatives.map((a, i) => (
                   <span key={a}>
@@ -409,20 +417,20 @@ export function PlanPanel({
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <h3 className="h-section mb-1">{pick(lang, 'Steps', 'चरण')}</h3>
-                <ol className="list-decimal space-y-1 pl-5 text-[13px] leading-relaxed text-ink">
+                <ol className="list-decimal space-y-1 pl-5 text-sm leading-relaxed text-ink">
                   {intervention.steps.map((st) => <li key={st}>{st}</li>)}
                 </ol>
               </div>
               <div className="space-y-3">
                 <div>
                   <h3 className="h-section mb-1">{pick(lang, 'What counts as proof', 'सबूत क्या माना जाएगा')}</h3>
-                  <ul className="list-disc space-y-0.5 pl-5 text-[13px] text-ink">
+                  <ul className="list-disc space-y-0.5 pl-5 text-sm text-ink">
                     {intervention.required_evidence.map((r) => <li key={r}>{r}</li>)}
                   </ul>
                 </div>
                 <div>
                   <h3 className="h-section mb-1">{pick(lang, 'Only works if', 'तभी काम करेगा जब')}</h3>
-                  <ul className="list-disc space-y-0.5 pl-5 text-[13px] text-ink-soft">
+                  <ul className="list-disc space-y-0.5 pl-5 text-sm text-ink-soft">
                     {intervention.delivery_conditions.map((r) => <li key={r}>{r}</li>)}
                   </ul>
                 </div>
@@ -441,7 +449,7 @@ export function PlanPanel({
                 <p className="mt-1">{intervention.evidence.effect_size_text}</p>
               ) : null}
               {intervention.evidence.source_title ? (
-                <p className="mt-1 text-[12px]">
+                <p className="mt-1 text-xs">
                   {intervention.evidence.source_url ? (
                     <a href={intervention.evidence.source_url} className="link" rel="noreferrer noopener" target="_blank">
                       {intervention.evidence.source_title}
@@ -450,7 +458,7 @@ export function PlanPanel({
                 </p>
               ) : null}
               {intervention.limitations.length > 0 ? (
-                <p className="mt-1.5 text-[12.5px]">
+                <p className="mt-1.5 text-sm">
                   <span className="font-medium">{pick(lang, 'Limitations: ', 'सीमाएँ: ')}</span>
                   {intervention.limitations.join(' ')}
                 </p>
@@ -460,16 +468,33 @@ export function PlanPanel({
 
           {currentPlan.pre_registration ? (
             <div className="rounded-md border border-brand/25 bg-brand-light p-3">
-              <h3 className="mb-1 text-[13px] font-semibold text-ink">
-                {pick(lang, 'Success was defined before the work started', 'काम शुरू होने से पहले सफलता तय की गई')}
-              </h3>
-              <p className="mb-2 text-[12.5px] leading-relaxed text-ink-soft">
-                {pick(
-                  lang,
-                  'These terms were locked when the plan was approved — the metric, the two rounds to compare, the comparison schools, and the bar to clear. They cannot be chosen afterwards to suit the result.',
-                  'ये शर्तें योजना स्वीकृत होते समय तय हो गईं — मापदंड, तुलना के दो दौर, तुलना विद्यालय, और लक्ष्य। बाद में परिणाम के अनुसार नहीं बदली जा सकतीं।',
-                )}
-              </p>
+              {['draft', 'submitted', 'revision_requested'].includes(currentPlan.status) ? (
+                <>
+                  <h3 className="mb-1 text-sm font-semibold text-ink">
+                    {pick(lang, 'How success will be judged', 'सफलता कैसे आँकी जाएगी')}
+                  </h3>
+                  <p className="mb-2 text-sm leading-relaxed text-ink-soft">
+                    {pick(
+                      lang,
+                      'These terms are set out now and locked when the plan is approved: the metric, the two rounds to compare, the comparison schools, and the bar to clear. They cannot be chosen afterwards to suit the result.',
+                      'ये शर्तें अभी तय हैं और स्वीकृति पर बंद हो जाएँगी — मापदंड, तुलना के दो दौर, तुलना विद्यालय, और लक्ष्य। बाद में परिणाम के अनुसार नहीं बदली जा सकतीं।',
+                    )}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="mb-1 text-sm font-semibold text-ink">
+                    {pick(lang, 'Success was defined before the work started', 'काम शुरू होने से पहले सफलता तय की गई')}
+                  </h3>
+                  <p className="mb-2 text-sm leading-relaxed text-ink-soft">
+                    {pick(
+                      lang,
+                      'These terms were locked when the plan was approved — the metric, the two rounds to compare, the comparison schools, and the bar to clear. They cannot be chosen afterwards to suit the result.',
+                      'ये शर्तें योजना स्वीकृत होते समय तय हो गईं — मापदंड, तुलना के दो दौर, तुलना विद्यालय, और लक्ष्य। बाद में परिणाम के अनुसार नहीं बदली जा सकतीं।',
+                    )}
+                  </p>
+                </>
+              )}
               <Facts cols={3}>
                 <Field label={pick(lang, 'Measured on', 'मापदंड')}>
                   {pick(lang, 'Class', 'कक्षा')} {currentPlan.pre_registration.grade} · {names.competency}
@@ -486,7 +511,7 @@ export function PlanPanel({
                 </Field>
                 <Field label={pick(lang, 'Participation floor', 'भागीदारी न्यूनतम')}>
                   <span className="tnum">{Math.round(currentPlan.pre_registration.participation_floor_ratio * 100)}%</span>{' '}
-                  <span className="text-[12px] text-ink-faint">{pick(lang, 'of baseline', 'आधार का')}</span>
+                  <span className="text-xs text-ink-faint">{pick(lang, 'of baseline', 'आधार का')}</span>
                 </Field>
                 <Field label={pick(lang, 'Settings version', 'सेटिंग संस्करण')}>
                   <Mono>{currentPlan.pre_registration.settings_version_id}</Mono>
@@ -509,21 +534,21 @@ export function PlanPanel({
                       }>
                         {a.decision.replace(/_/g, ' ')}
                       </Pill>
-                      <span className="text-[13px] text-ink-soft">
+                      <span className="text-sm text-ink-soft">
                         {pick(lang, 'requires', 'आवश्यक')}{' '}
                         <RoleName role={a.required_role} lang={lang} />
                       </span>
                       {a.ai_drafted ? <AiDrafted lang={lang} /> : null}
                     </div>
-                    <p className="mt-1 text-[12.5px] text-ink-soft">
+                    <p className="mt-1 text-sm text-ink-soft">
                       {pick(lang, 'Submitted by', 'प्रस्तुत')} {nm(names.users, a.submitted_by)}{' '}
-                      {fmtDate(a.submitted_at)}
+                      {fmtDate(a.submitted_at, false, lang)}
                       {a.decided_by ? (
-                        <> · {pick(lang, 'decided by', 'निर्णय')} {nm(names.users, a.decided_by)} {fmtDate(a.decided_at)}</>
+                        <> · {pick(lang, 'decided by', 'निर्णय')} {nm(names.users, a.decided_by)} {fmtDate(a.decided_at, false, lang)}</>
                       ) : null}
                     </p>
                     {a.reason ? (
-                      <p className="mt-1 border-l-2 border-line-strong pl-2 text-[13px] italic text-ink">{a.reason}</p>
+                      <p className="mt-1 border-l-2 border-line-strong pl-2 text-sm italic text-ink">{a.reason}</p>
                     ) : null}
                   </li>
                 ))}
@@ -532,7 +557,7 @@ export function PlanPanel({
           ) : null}
 
           {plans.length > 1 ? (
-            <p className="text-[12px] text-ink-faint">
+            <p className="text-xs text-ink-faint">
               {pick(lang, 'Plan history:', 'योजना इतिहास:')}{' '}
               {plans.map((p) => `${p.id} (cycle ${p.cycle} v${p.version}, ${p.status})`).join(' · ')}
             </p>
@@ -561,7 +586,7 @@ export function WorkPanel({
         )}
         right={
           tasks.length > 0 ? (
-            <span className="tnum text-[13px] text-ink-soft">
+            <span className="tnum text-sm text-ink-soft">
               {verified} / {tasks.length} {pick(lang, 'verified', 'सत्यापित')}
             </span>
           ) : null
@@ -595,34 +620,34 @@ export function WorkPanel({
                       </Link>
                       {t.cross_source ? <span className="ml-1.5"><CrossSourcePill lang={lang} /></span> : null}
                       {t.deadline_change_reason ? (
-                        <p className="mt-0.5 text-[11.5px] text-ink-faint">
+                        <p className="mt-0.5 text-xs text-ink-faint">
                           {pick(lang, 'Deadline moved:', 'समय-सीमा बदली:')} {t.deadline_change_reason}
                         </p>
                       ) : null}
                       {t.reassign_reason ? (
-                        <p className="mt-0.5 text-[11.5px] text-ink-faint">
+                        <p className="mt-0.5 text-xs text-ink-faint">
                           {pick(lang, 'Reassigned:', 'पुनः सौंपा:')} {t.reassign_reason}
                         </p>
                       ) : null}
                     </td>
                     <td>
-                      <span className="text-[13px]">{nm(names.users, t.owner_user_id)}</span>
+                      <span className="text-sm">{nm(names.users, t.owner_user_id)}</span>
                       <br />
-                      <span className="text-[11.5px] text-ink-faint"><RoleName role={t.owner_role} lang={lang} /></span>
+                      <span className="text-xs text-ink-faint"><RoleName role={t.owner_role} lang={lang} /></span>
                     </td>
-                    <td className="text-[13px]">
+                    <td className="text-sm">
                       {t.school_id ? (
                         <Link href={`/schools/${t.school_id}`} className="link">{nm(names.schools, t.school_id)}</Link>
                       ) : <span className="text-ink-faint">{pick(lang, 'all schools', 'सभी विद्यालय')}</span>}
                     </td>
-                    <td className="text-[13px]">
+                    <td className="text-sm">
                       {t.proof_count} × <EvidenceTypeName type={t.proof_type} lang={lang} />
                     </td>
-                    <td className="tnum whitespace-nowrap text-[13px]">
-                      {fmtDate(t.due_date)}
+                    <td className="tnum whitespace-nowrap text-sm">
+                      {fmtDate(t.due_date, false, lang)}
                       {t.original_due_date !== t.due_date ? (
-                        <span className="block text-[11px] text-ink-faint">
-                          {pick(lang, 'was', 'पहले')} {fmtDate(t.original_due_date)}
+                        <span className="block text-2xs text-ink-faint">
+                          {pick(lang, 'was', 'पहले')} {fmtDate(t.original_due_date, false, lang)}
                         </span>
                       ) : null}
                     </td>
@@ -659,7 +684,7 @@ export function ProofPanel({
           'कोई अपना ही सबूत सत्यापित नहीं करता। हर काम का सबूत सत्यापित और कम से कम एक स्वतंत्र जाँच आवश्यक।',
         )}
         right={
-          <span className="tnum text-[13px] text-ink-soft">
+          <span className="tnum text-sm text-ink-soft">
             {verified.length} / {evidence.length} {pick(lang, 'verified', 'सत्यापित')}
             {independent.length > 0 ? ` · ${independent.length} ${pick(lang, 'independent', 'स्वतंत्र')}` : ''}
           </span>
@@ -674,47 +699,31 @@ export function ProofPanel({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[13.5px] font-medium text-ink">
+                    <span className="text-sm font-medium text-ink">
                       <EvidenceTypeName type={e.evidence_type} lang={lang} />
                     </span>
                     <EvidenceStatusPill status={e.status} lang={lang} />
                     {e.verification_method && e.verification_method !== 'desk_review' ? (
                       <Pill tone="active">{e.verification_method.replace(/_/g, ' ')}</Pill>
                     ) : null}
-                    {e.gps_status === 'outside_radius' ? (
-                      <Pill tone="warn" title="The location recorded does not match the school">
-                        {pick(lang, 'GPS outside the school', 'GPS विद्यालय से बाहर')}
-                      </Pill>
-                    ) : null}
-                    {e.gps_status === 'not_captured' ? (
-                      <Pill title="No location was recorded">{pick(lang, 'No GPS', 'GPS नहीं')}</Pill>
-                    ) : null}
+                    <GpsBadge status={e.gps_status} distance={e.gps_distance_m} accuracy={e.gps_accuracy_m} lang={lang} />
                   </div>
-                  <p className="mt-1 text-[12.5px] text-ink-soft">
+                  <p className="mt-1 text-sm text-ink-soft">
                     {pick(lang, 'Submitted by', 'प्रस्तुत')} {nm(names.users, e.submitted_by)}{' '}
-                    (<RoleName role={e.submitted_role} lang={lang} />) {fmtDate(e.submitted_at, true)}
+                    (<RoleName role={e.submitted_role} lang={lang} />) {fmtDate(e.submitted_at, true, lang)}
                     {e.school_id ? <> · {nm(names.schools, e.school_id)}</> : null}
                     {e.channel !== 'app' ? <> · {pick(lang, 'via', 'माध्यम')} {e.channel}</> : null}
                   </p>
-                  {Object.keys(e.summary).length > 0 ? (
-                    <dl className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[12.5px]">
-                      {Object.entries(e.summary).slice(0, 6).map(([k, v]) => (
-                        <div key={k} className="flex gap-1">
-                          <dt className="text-ink-faint">{k.replace(/_/g, ' ')}:</dt>
-                          <dd className="text-ink">{String(v)}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  ) : null}
+                  <EvidenceSummary id={e.id} summary={e.summary} lang={lang} />
                   {e.verified_by ? (
-                    <p className="mt-1 text-[12.5px] text-good">
-                      {pick(lang, 'Checked by', 'जाँचा')} {nm(names.users, e.verified_by)} {fmtDate(e.verified_at, true)}
+                    <p className="mt-1 text-sm text-good">
+                      {pick(lang, 'Checked by', 'जाँचा')} {nm(names.users, e.verified_by)} {fmtDate(e.verified_at, true, lang)}
                     </p>
                   ) : null}
                   {e.rejection_reason ? (
-                    <p className="mt-1 border-l-2 border-crit/40 pl-2 text-[13px] text-crit">{e.rejection_reason}</p>
+                    <p className="mt-1 border-l-2 border-crit/40 pl-2 text-sm text-crit">{e.rejection_reason}</p>
                   ) : null}
-                  <p className="mt-1 text-[11px] text-ink-faint">
+                  <p className="mt-1 text-2xs text-ink-faint">
                     <Mono>{e.id}</Mono>
                     {e.file_name ? <> · {e.file_name}</> : null}
                     {e.sha256 ? <> · sha256 {shortHash(e.sha256)}</> : null}
@@ -760,9 +769,10 @@ export function OutcomePanel({
         <div className="divide-y divide-line">
           {outcomes.map((o) => (
             <div key={o.id} className="card-pad space-y-4">
+              <OutcomeCalibrationNote outcomeId={o.id} lang={lang} />
               <div className="flex flex-wrap items-center gap-2">
                 <OutcomePill category={o.category} lang={lang} />
-                <span className="text-[13px] text-ink-soft">
+                <span className="text-sm text-ink-soft">
                   {pick(lang, 'cycle', 'चक्र')} {o.cycle} ·{' '}
                   {nm(names.roundLabels, o.baseline_round_id)} → {nm(names.roundLabels, o.followup_round_id)}
                 </span>
@@ -775,7 +785,7 @@ export function OutcomePanel({
                     <h3 className="h-section mb-1">
                       {pick(lang, 'Difference in differences', 'अंतर का अंतर')}
                     </h3>
-                    <p className="mb-2 text-[12.5px] leading-snug text-ink-soft">
+                    <p className="mb-2 text-sm leading-snug text-ink-soft">
                       {pick(
                         lang,
                         'How much the treated schools moved, minus how much the comparison schools moved over the same two rounds.',
@@ -832,17 +842,17 @@ export function OutcomePanel({
               </Facts>
 
               <div className="rounded-md border border-line bg-paper-sunk p-3">
-                <h3 className="mb-1 text-[13px] font-semibold text-ink">
+                <h3 className="mb-1 text-sm font-semibold text-ink">
                   {pick(lang, 'Participation check', 'भागीदारी जाँच')}
                 </h3>
-                <p className="text-[12.5px] leading-relaxed text-ink-soft">
+                <p className="text-sm leading-relaxed text-ink-soft">
                   {pick(
                     lang,
                     'If fewer children sit the follow-up assessment, the average can rise without anyone learning more. The check fails when follow-up participation drops below the floor.',
                     'अगर अगले आकलन में कम बच्चे बैठें, तो औसत बढ़ सकता है बिना किसी सुधार के। भागीदारी न्यूनतम से नीचे जाने पर जाँच असफल।',
                   )}
                 </p>
-                <p className="mt-1.5 text-[13px] text-ink">
+                <p className="mt-1.5 text-sm text-ink">
                   <span className="tnum">
                     {o.participation_check.treated_baseline === null ? '—' : `${Math.round(o.participation_check.treated_baseline * 100)}%`}
                     {' → '}
@@ -876,11 +886,11 @@ export function OutcomePanel({
 
               <Callout tone="warn" title={pick(lang, 'How to read this number', 'इस संख्या को कैसे पढ़ें')}>
                 {OUTCOME_NOTE}
-                <p className="mt-1.5 text-[12px]">{o.ci_method}</p>
+                <p className="mt-1.5 text-xs">{o.ci_method}</p>
               </Callout>
 
               <details className="no-print">
-                <summary className="cursor-pointer text-[12.5px] text-ink-faint hover:text-ink-soft">
+                <summary className="cursor-pointer text-sm text-ink-faint hover:text-ink-soft">
                   {pick(lang, 'School-by-school figures', 'विद्यालयवार आँकड़े')}
                 </summary>
                 <div className="mt-2 overflow-x-auto">
@@ -903,7 +913,7 @@ export function OutcomePanel({
                           <td>
                             <Link href={`/schools/${r.school_id}`} className="link">{nm(names.schools, r.school_id)}</Link>
                           </td>
-                          <td className="text-[12.5px] text-ink-soft">{g}</td>
+                          <td className="text-sm text-ink-soft">{g}</td>
                           <td className="tnum">{fmtPct(r.baseline_pct)}</td>
                           <td className="tnum">{fmtPct(r.followup_pct)}</td>
                           <td>
@@ -918,8 +928,8 @@ export function OutcomePanel({
                 </div>
               </details>
 
-              <p className="text-[12px] text-ink-faint">
-                <Mono>{o.id}</Mono> · {pick(lang, 'evaluated', 'मूल्यांकित')} {fmtDate(o.evaluated_at, true)}
+              <p className="text-xs text-ink-faint">
+                <Mono>{o.id}</Mono> · {pick(lang, 'evaluated', 'मूल्यांकित')} {fmtDate(o.evaluated_at, true, lang)}
                 {o.reviewed_by ? <> · {pick(lang, 'read by', 'पढ़ा')} {nm(names.users, o.reviewed_by)}</> : null}
                 {' · '}<Mono>{o.settings_version_id}</Mono>
               </p>
@@ -946,12 +956,12 @@ export function TimelinePanel({
         <ol className="divide-y divide-line">
           {events.map((e) => (
             <li key={e.id} className="flex gap-3 px-4 py-2.5 sm:px-5">
-              <time className="tnum w-32 shrink-0 text-[12px] text-ink-faint" dateTime={e.ts}>
-                {fmtDate(e.ts, true)}
+              <time className="tnum w-32 shrink-0 text-xs text-ink-faint" dateTime={e.ts}>
+                {fmtDate(e.ts, true, lang)}
               </time>
               <div className="min-w-0 flex-1">
-                <p className="text-[13.5px] text-ink">{e.summary}</p>
-                <p className="text-[11.5px] text-ink-faint">
+                <p className="text-sm text-ink">{e.summary}</p>
+                <p className="text-xs text-ink-faint">
                   {e.actor_user_id ? nm(names.users, e.actor_user_id) : e.actor_label}
                   {e.from_status && e.to_status ? (
                     <> · {e.from_status.replace(/_/g, ' ')} → {e.to_status.replace(/_/g, ' ')}</>

@@ -2,6 +2,7 @@ import 'server-only';
 import { all, one, type Param } from './db';
 import { and, casesPred, tasksPred, evidencePred, findingsPred, type Pred } from './scope';
 import type { Session } from './session';
+import { independentOf } from './duty';
 import { today } from './clock';
 
 /**
@@ -126,7 +127,7 @@ export function headline(s: Session): Headline {
   const ePend = and(
     evidencePred(s, 'e'),
     { sql: `e.status = 'pending'`, params: [] },
-    { sql: 'e.submitted_by <> ?', params: [s.user_id] },
+    independentOf(s.user_id, 'e'),
   );
 
   return {

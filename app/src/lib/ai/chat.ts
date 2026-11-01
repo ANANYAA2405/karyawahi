@@ -10,6 +10,7 @@ import { getReport } from '../feed';
 import { scopeName } from '../repo';
 import { today } from '../clock';
 import { ROLE_LABELS } from '@domain/permissions';
+import { auditNumbers } from './audit-numbers';
 
 /**
  * Karyavahi AI — the orchestration loop.
@@ -30,7 +31,7 @@ export type ChatEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool_start'; id: string; name: string; label: string }
   | { type: 'tool_end'; id: string; name: string; ok: boolean; records: number }
-  | { type: 'done'; sources: string[]; citedNotRetrieved: string[]; interactionId: string; followUps: string[] }
+  | { type: 'done'; sources: string[]; citedNotRetrieved: string[]; interactionId: string; followUps: string[]; unsupportedFigures: string[] }
   | { type: 'error'; message: string; retryable: boolean };
 
 const MAX_TURNS = 8;
@@ -53,6 +54,7 @@ const TOOL_LABEL: Record<string, string> = {
   get_data_quality_issues: 'Checking data quality',
   get_report_data: 'Building report data',
   get_review_meeting_agenda: 'Drafting the review agenda',
+  search_evidence_library: 'Searching the evidence library',
   search_records: 'Searching records',
   get_complaints: 'Reading complaints',
 };
@@ -129,6 +131,8 @@ export async function runChat(s: Session, history: ChatMessage[], ctx: PageConte
   const messages: Anthropic.Beta.BetaMessageParam[] = history.map((m) => ({ role: m.role, content: m.content }));
   const toolsUsed: string[] = [];
   const retrieved = new Set<string>();
+  // Everything the answer may take a figure from: the conversation, the page context, the tool results.
+  const corpus: unknown[] = [history.map((m) => m.content).join('\n'), contextBlock(s, ctx)];
   let finalText = '';
   let usage = { input: 0, output: 0, cacheRead: 0 };
   let requestId: string | null = null;
@@ -198,6 +202,7 @@ export async function runChat(s: Session, history: ChatMessage[], ctx: PageConte
         emit({ type: 'tool_start', id: tu.id, name: tu.name, label: TOOL_LABEL[tu.name] ?? tu.name });
         toolsUsed.push(tu.name);
         const { result, error } = runTool(s, tu.name, tu.input);
+        corpus.push(result.data);
         result.sources.forEach((id) => retrieved.add(id));
         // Ids mentioned anywhere in the returned data are also legitimately citable.
         const json = JSON.stringify(result.data);
@@ -214,7 +219,8 @@ export async function runChat(s: Session, history: ChatMessage[], ctx: PageConte
     const cited = [...new Set([...body.matchAll(ID_RE)].map((m) => m[0]))];
     const citedNotRetrieved = cited.filter((id) => !retrieved.has(id));
     const interactionId = logAi(s, { kind: 'ask', model: st.model, question, tools: toolsUsed, referencedIds: cited.filter((id) => retrieved.has(id)), status: 'ok', usage, requestId, stopReason });
-    emit({ type: 'done', sources: cited.filter((id) => retrieved.has(id)), citedNotRetrieved, interactionId, followUps });
+    const unsupportedFigures = auditNumbers(body, corpus).unsupported;
+    emit({ type: 'done', sources: cited.filter((id) => retrieved.has(id)), citedNotRetrieved, interactionId, followUps, unsupportedFigures });
   } catch (err) {
     flush(true);
     if (signal.aborted) {

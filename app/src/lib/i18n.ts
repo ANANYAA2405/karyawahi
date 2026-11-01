@@ -24,6 +24,10 @@ export const T: Dict = {
     en: 'DEMO MODE — FICTIONAL SEED DATA — NOT ACTUAL GOVERNMENT STATISTICS',
     hi: 'डेमो मोड — काल्पनिक डेटा — वास्तविक सरकारी आँकड़े नहीं',
   },
+  demoBannerReal: {
+    en: 'DEMO MODE — REAL SCHOOLS (UDISE+ ~2020-21) · LEARNING RESULTS SIMULATED, CALIBRATED TO PRS 2024 · COSTS FROM UP PAB 2025-26',
+    hi: 'डेमो मोड — वास्तविक विद्यालय (यू-डाइस+ ~2020-21) · अधिगम परिणाम काल्पनिक, परख 2024 से अंशांकित · लागत उ.प्र. PAB 2025-26 से',
+  },
   demoClock: { en: 'Demo date', hi: 'डेमो तिथि' },
 
   // nav
@@ -45,8 +49,12 @@ export const T: Dict = {
   navAdmin: { en: 'Demo admin', hi: 'डेमो प्रशासन' },
   navOutbox: { en: 'Message outbox', hi: 'संदेश आउटबॉक्स' },
   navJobs: { en: 'System jobs', hi: 'सिस्टम कार्य' },
+  navApiKeys: { en: 'API keys', hi: 'API कुंजियाँ' },
+  navFeedback: { en: 'User feedback', hi: 'उपयोगकर्ता सुझाव' },
   navAi: { en: 'AI activity log', hi: 'AI लॉग' },
   navOverview: { en: 'Dashboard', hi: 'डैशबोर्ड' },
+  navToday: { en: 'My day', hi: 'आज का काम' },
+  navMySchool: { en: 'My school', hi: 'मेरा विद्यालय' },
   navExecutionAll: { en: 'All field work', hi: 'सभी क्षेत्र कार्य' },
   navHotspots: { en: 'Learning hotspots', hi: 'अधिगम हॉटस्पॉट' },
   navExecution: { en: 'Field operations', hi: 'क्षेत्र संचालन' },

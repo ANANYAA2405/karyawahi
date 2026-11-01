@@ -1,4 +1,4 @@
-import type { CaseStatus, OutcomeCategory } from './types';
+import type { CaseStatus, OutcomeCategory, RoleCode } from './types';
 
 export const CASE_STATUSES: readonly CaseStatus[] = [
   'detected',
@@ -36,6 +36,45 @@ export const TRANSITIONS: Record<CaseStatus, readonly CaseStatus[]> = {
 export function canTransition(from: CaseStatus, to: CaseStatus): boolean {
   return TRANSITIONS[from].includes(to);
 }
+
+/**
+ * Who may make each legal move. A move missing from this table is refused for everyone, so a
+ * new transition has no authority until someone decides who holds it. Seeing a case (a
+ * headmaster whose school is in it, a task owner, an auditor) is never authority over it.
+ * Plan decisions are narrowed further by the lever, and approval by maker ≠ checker.
+ */
+export const TRANSITION_ROLES: Readonly<Record<string, readonly RoleCode[]>> = {
+  'detected>under_investigation': ['beo', 'deo'],
+  'detected>dismissed': ['beo', 'deo'],
+  'under_investigation>awaiting_approval': ['beo', 'deo'],
+  'under_investigation>dismissed': ['beo', 'deo'],
+  'awaiting_approval>approved': ['beo', 'deo', 'state_admin'],
+  'awaiting_approval>revision_requested': ['beo', 'deo', 'state_admin'],
+  'awaiting_approval>under_investigation': ['beo', 'deo', 'state_admin'],
+  'awaiting_approval>referred_pab': ['beo', 'deo', 'state_admin'],
+  'revision_requested>awaiting_approval': ['beo', 'deo'],
+  'approved>assigned': ['beo', 'deo'],
+  'assigned>in_progress': ['beo', 'deo'],
+  'in_progress>awaiting_verification': ['beo', 'deo'],
+  'awaiting_verification>in_progress': ['beo', 'deo'],
+  'awaiting_verification>outcome_pending': ['beo', 'deo'],
+  'outcome_pending>closed': ['beo', 'deo'],
+  'outcome_pending>reopened': ['beo', 'deo', 'state_admin'],
+  'reopened>awaiting_approval': ['beo', 'deo'],
+  'closed>reopened': ['beo', 'deo', 'state_admin'],
+  'referred_pab>under_investigation': ['deo', 'state_admin'],
+  'dismissed>under_investigation': ['beo', 'deo'],
+};
+
+export function rolesForTransition(from: CaseStatus, to: CaseStatus): readonly RoleCode[] {
+  return TRANSITION_ROLES[`${from}>${to}`] ?? [];
+}
+
+/** The moves that decide a submitted plan, and the subset that approve it. */
+export const isPlanDecision = (from: CaseStatus, to: CaseStatus): boolean =>
+  from === 'awaiting_approval' && ['approved', 'revision_requested', 'under_investigation', 'referred_pab'].includes(to);
+export const isPlanApproval = (from: CaseStatus, to: CaseStatus): boolean =>
+  from === 'awaiting_approval' && (to === 'approved' || to === 'referred_pab');
 
 /** Moves that always need a written reason. */
 export const REASON_REQUIRED: readonly [CaseStatus, CaseStatus][] = [

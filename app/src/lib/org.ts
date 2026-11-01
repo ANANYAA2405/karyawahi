@@ -1,9 +1,11 @@
 import 'server-only';
-import { all, one, run, tx, nextSeq } from './db';
+import { all, one, run, tx, nextSeq, nextIdFor } from './db';
 import type { Session } from './session';
 import { nowIso, today } from './clock';
 import { appendAudit, notify } from './write';
 import type { RoleCode } from '@domain/types';
+import { Refused } from './guard';
+import { unitInScope } from './scope';
 
 /**
  * Organisational hierarchy: who reports to whom, who is the designated authority for a piece of
@@ -105,8 +107,7 @@ export function listDelegations(scopeFilter: (d: Delegation) => boolean): Delega
 
 export function createDelegation(actor: Session, d: Omit<Delegation, 'id' | 'created_by' | 'created_at' | 'revoked_at'>): string {
   return tx(() => {
-    const max = one<{ m: string | null }>('select max(id) m from delegations')?.m;
-    const id = `DLG-${String((max ? Number(max.slice(4)) : 0) + 1).padStart(4, '0')}`;
+    const id = nextIdFor('delegation', 'delegations', 'DLG-', 4);
     run(`insert into delegations values (?,?,?,?,?,?,?,?,?,?,?,null,null)`,
       id, d.from_user_id, d.to_user_id, d.role, d.scope_type, d.scope_id, d.starts_on, d.ends_on, d.reason, actor.user_id, nowIso());
     appendAudit({ actorUserId: actor.user_id, actorLabel: actor.full_name, actorRole: actor.role, action: 'delegation.create', entityType: 'delegation', entityId: id, after: d, reason: d.reason });
@@ -122,8 +123,39 @@ export function revokeDelegation(actor: Session, id: string, reason: string): vo
   });
 }
 
+/** Accounts this user may see on the accounts page: people whose role sits inside their area,
+ *  never the officers above them. The demo admin sees everyone. */
+export function usersInArea(s: Session, q = ''): { id: string; full_name: string; email: string; status: string; role: RoleCode; scope_type: string; scope_id: string }[] {
+  const everyone = s.roles.some((r) => r.role === 'demo_admin');
+  const area = everyone ? { sql: '1=1', params: [] } : unitInScope(s, 'ur.scope_type', 'ur.scope_id');
+  const text = q.trim().slice(0, 60);
+  return all<{ id: string; full_name: string; email: string; status: string; role: RoleCode; scope_type: string; scope_id: string }>(
+    `select u.id, u.full_name, u.email, u.status, ur.role, ur.scope_type, ur.scope_id
+       from users u join user_roles ur on ur.user_id = u.id
+      where (${area.sql}) ${text ? 'and (u.full_name like ? or u.email like ? or u.id like ?)' : ''}
+      order by case u.status when 'suspended' then 0 else 1 end,
+               case ur.role when 'deo' then 1 when 'beo' then 2 when 'brc' then 3 when 'crc' then 4 else 5 end, u.full_name
+      limit 80`,
+    ...area.params, ...(text ? [`%${text}%`, `%${text}%`, `%${text}%`] : []),
+  ).filter((u) => u.id !== s.user_id);
+}
+
 // ---------------------------------------------------------------- reporting lines & scope
+/**
+ * Sets who a user reports to. The new manager must be active, more senior than the user, and
+ * either the actor or someone inside the actor's own area: a block officer arranges lines
+ * within their block, and cannot route a headmaster's complaints to anyone in the state.
+ * Authority over the user themselves is checked by the caller (manage_hierarchy).
+ */
 export function setManager(actor: Session, userId: string, managerId: string | null, reason: string): void {
+  if (managerId === userId) throw new Refused('A user cannot report to themselves.', 'input');
+  const u = userCard(userId);
+  const m = managerId ? userCard(managerId) : null;
+  if (managerId && (!m || m.status !== 'active')) throw new Refused('The designated authority must be an active user.', 'input');
+  if (u && m && ROLE_RANK[m.role] <= ROLE_RANK[u.role]) throw new Refused('The designated authority must hold a more senior role.', 'input');
+  if (m && m.id !== actor.user_id && !scopeContains(actor, m.scope_type as ScopeType, m.scope_id)) {
+    throw new Refused('Choose yourself or someone inside your own area as the designated authority.', 'scope');
+  }
   const before = managerOf(userId);
   tx(() => {
     run(`insert into reporting_lines (user_id, manager_user_id, relation, source, updated_at, updated_by) values (?,?,?,?,?,?)

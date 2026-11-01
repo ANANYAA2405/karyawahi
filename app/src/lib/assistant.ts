@@ -2,6 +2,7 @@ import 'server-only';
 import { all, one } from './db';
 import { casesPred, tasksPred, evidencePred, findingsPred, and } from './scope';
 import type { Session } from './session';
+import { independentOf } from './duty';
 import { today } from './clock';
 import { pick } from './i18n';
 import type { Language } from '@domain/types';
@@ -41,14 +42,18 @@ export const QUESTIONS: QuestionDef[] = [
     id: 'waiting_on_me',
     label: { en: 'What is waiting on me?', hi: 'मेरी प्रतीक्षा में क्या है?' },
     run: (s, lang) => {
-      const cp = and(casesPred(s, 'c'), { sql: `c.status = 'awaiting_approval'`, params: [] });
+      const cp = and(
+        casesPred(s, 'c'),
+        { sql: `c.status = 'awaiting_approval'`, params: [] },
+        { sql: `not exists (select 1 from approvals a where a.case_id = c.id and a.decision = 'pending' and a.submitted_by = ?)`, params: [s.user_id] },
+      );
       const approvals = all<{ id: string; title: string; lever: string }>(
         `select c.id, c.title, c.lever from cases c where ${cp.sql} limit 25`, ...cp.params,
       );
       const ep = and(
         evidencePred(s, 'e'),
         { sql: `e.status = 'pending'`, params: [] },
-        { sql: 'e.submitted_by <> ?', params: [s.user_id] },
+        independentOf(s.user_id, 'e'),
       );
       const proof = Number(one<{ c: number }>(`select count(*) c from evidence e where ${ep.sql}`, ...ep.params)?.c ?? 0);
       const mine = Number(one<{ c: number }>(
